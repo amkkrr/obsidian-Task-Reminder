@@ -1,10 +1,10 @@
 {
   "id": "task-reminder",
   "name": "Task Reminder",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minAppVersion": "1.4.0",
   "description": "Displays a daily task reminder popup when Obsidian starts, showing pending tasks from Daily Notes and custom sources.",
   "author": "amkkrr",
   "authorUrl": "https://github.com/amkkrr",
-  "isDesktopOnly": true
+  "isDesktopOnly": false
 }

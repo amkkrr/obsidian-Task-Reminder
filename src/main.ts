@@ -3,7 +3,7 @@
  * 根据 SPEC.md §4.5 定义
  */
 
-import { Plugin, Notice, moment } from 'obsidian';
+import { Plugin, Notice, Platform, moment } from 'obsidian';
 import { TaskReminderSettings, DEFAULT_SETTINGS, TaskReminderSettingTab } from './settings';
 import { TaskDataService } from './services/TaskDataService';
 import { ReminderModal } from './ui/ReminderModal';
@@ -37,7 +37,7 @@ export default class TaskReminderPlugin extends Plugin {
     });
 
     // 状态栏（仅桌面端）
-    if (this.settings.showStatusBar) {
+    if (this.settings.showStatusBar && Platform.isDesktop) {
       this.setupStatusBar();
     }
 

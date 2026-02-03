@@ -678,7 +678,7 @@ try {
 | 移除示例代码 | ✅ 将执行 |
 | 命令 ID 不含插件 ID | ✅ 使用 `show-task-reminder` |
 | 设置 minAppVersion | `1.4.0`（Dataview API 稳定版本） |
-| isDesktopOnly | `true`（状态栏仅桌面端） |
+| isDesktopOnly | `false`（支持移动端，状态栏仅桌面端显示） |
 
 ### 6.2 事件管理
 
@@ -735,8 +735,10 @@ this.registerInterval(
 
 ### 7.4 移动端
 
-- **不支持**：`isDesktopOnly: true`
-- 移动端安装插件时会显示兼容性警告
+- **支持**：`isDesktopOnly: false`
+- 状态栏功能仅在桌面端显示（通过 `Platform.isDesktop` 判断）
+- 核心提醒功能（弹窗、Notice）在移动端正常工作
+- 需测试：iOS、Android 上的 Modal 显示效果
 
 ---
 
