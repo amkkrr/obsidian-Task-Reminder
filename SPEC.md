@@ -1,8 +1,18 @@
 # Task Reminder Plugin 规格书
 
-> **版本**: 1.0.0-draft
+> **版本**: 1.1.0
 > **创建日期**: 2026-02-03
-> **状态**: 草案
+> **最后更新**: 2026-02-03
+> **状态**: 已审计修订
+
+---
+
+## 修订记录
+
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| 1.0.0-draft | 2026-02-03 | 初始草案 |
+| 1.1.0 | 2026-02-03 | 根据审计报告修订：移除 eval、补充数据合同、明确 Dataview 依赖、修复存储策略等 |
 
 ---
 
@@ -27,12 +37,13 @@
 - ✅ 可视化配置面板
 - ✅ 命令面板手动触发
 - ✅ 与现有 dataviewjs 脚本解耦
+- ✅ 符合社区插件审核标准
 
 ### 1.3 命名
 
 - **插件 ID**: `task-reminder`
 - **显示名称**: Task Reminder（任务提醒）
-- **描述**: Displays a daily task reminder popup when Obsidian starts, showing pending tasks from Daily Notes, Nike projects, holidays, and recurring tasks.
+- **描述**: Displays a daily task reminder popup when Obsidian starts, showing pending tasks from Daily Notes and custom sources.
 
 ---
 
@@ -44,22 +55,26 @@
 
 - **触发时机**: Obsidian 布局就绪后（`onLayoutReady`）
 - **延迟机制**: 可配置延迟时间（默认 30 秒），等待同步完成
-- **防重复**: 每日只弹一次，基于日期 key 存储在 `localStorage`
+- **防重复**: 每日每 vault 只弹一次，基于插件数据存储（非 localStorage）
 - **弹窗内容**:
   - 今日待办任务列表
   - 来源标签（📅 Daily / 👟 Nike / 🎉 Holiday / 🔄 周期）
-  - 会议任务高亮显示
+  - 会议任务高亮显示（通过 `#meeting` 标签识别）
+  - **可点击跳转**：点击任务打开原文件并定位到任务行
 
 #### F2: 手动触发命令
 
 - **命令名称**: `Show today's task reminder`
 - **快捷键**: 用户可自定义
 - **行为**: 忽略"已弹过"状态，强制显示当前任务
+- **注意**: 手动触发**不会**写入"已弹过"标记
 
-#### F3: 状态栏指示器（可选）
+#### F3: 状态栏指示器
 
-- 显示今日待办数量
+- 显示今日待办数量（如 `📋 5`）
 - 点击打开提醒弹窗
+- **刷新策略**: 启动时 + 每 5 分钟 + 文件变更后 debounce（500ms）
+- 仅桌面端显示
 
 ### 2.2 配置项
 
@@ -68,61 +83,217 @@
 | `enabled` | boolean | `true` | 是否启用自动提醒 |
 | `popupDelay` | number | `30000` | 启动后延迟弹窗时间（毫秒） |
 | `popupDuration` | number | `8000` | Notice 通知显示时长（毫秒） |
+| `reminderStyle` | enum | `'both'` | 提醒样式：`'both'` / `'notice'` / `'modal'` |
 | `showStatusBar` | boolean | `true` | 是否显示状态栏指示器 |
 | `taskSources.daily` | boolean | `true` | 是否包含 Daily Note 任务 |
 | `taskSources.nike` | boolean | `true` | 是否包含 Nike 项目任务 |
 | `taskSources.holiday` | boolean | `true` | 是否包含节假日任务 |
 | `taskSources.recurring` | boolean | `true` | 是否包含周期任务 |
-| `dailyNotePath` | string | `"00 - INBOX/01 - Daily"` | Daily Note 文件夹路径 |
-| `utilsScriptPath` | string | `"06 - DATA FILE/99.Settings/05.Code/task-utils.js"` | 工具脚本路径 |
-| `recurringScriptPath` | string | `"06 - DATA FILE/99.Settings/05.Code/recurring-task-manager.js"` | 周期任务脚本路径 |
+| `dailyNotePath` | string | `""` | Daily Note 文件夹路径（需用户配置） |
+| `nikePath` | string | `""` | Nike 日历文件夹路径（需用户配置） |
+| `recurringConfigPath` | string | `""` | 周期任务配置文件路径（需用户配置） |
 
-### 2.3 数据源集成
+### 2.3 "已弹过"状态存储
 
-插件需要复用现有的数据获取逻辑：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Task Reminder Plugin                      │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐   │
-│  │ task-utils.js│    │recurring-    │    │ Dataview API │   │
-│  │              │◄───│manager.js    │◄───│              │   │
-│  └──────────────┘    └──────────────┘    └──────────────┘   │
-│         │                   │                   │            │
-│         ▼                   ▼                   ▼            │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              TaskDataService (新建)                   │   │
-│  │  - getTodayTasks(): Promise<TaskItem[]>              │   │
-│  │  - getTaskCount(): number                            │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                            │                                 │
-│                            ▼                                 │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              ReminderModal / Notice                   │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
+- **存储位置**: 插件数据文件（`data.json`）
+- **Key 格式**: `lastReminderDate: "YYYY-MM-DD"`
+- **粒度**: 每 vault 独立（插件数据天然隔离）
+- **跨设备同步**: **不同步**（每设备独立判断）
+- **语义**: 有任务才弹窗、才记录；无任务不记录，下次启动仍会检查
 
 ---
 
-## 3. 技术设计
+## 3. 数据源合同（Data Contracts）
 
-### 3.1 开发环境
+> 根据现有 `task-utils.js` 和 `recurring-task-manager.js` 提取
 
-根据 2025 年最佳实践，推荐使用：
+### 3.1 Daily Note 任务
+
+**来源定义**:
+```
+路径: {dailyNotePath}/{YYYY}/{MM.MonthName}/{YYYY-MM-DD}.md
+示例: 00 - Daily Plan/2026/02.February/2026-02-03.md
+```
+
+**查询规则**:
+```typescript
+// Dataview 查询
+dv.pages('"dailyNotePath"')
+  .file.tasks
+  .where(t => !t.completed && !t.checked)
+```
+
+**筛选条件**:
+- `!t.completed && !t.checked` - 未完成任务
+- 文件日期 ≤ 今天（包含过期任务）
+
+**输出字段**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `text` | string | 任务文本 |
+| `tags` | string[] | 任务标签（用于识别 meeting） |
+| `link` | Link | 来源文件链接 |
+| `line` | number | 任务所在行号 |
+| `path` | string | 文件路径 |
+
+**Meeting 识别规则**:
+```typescript
+const isMeeting = task.tags.some(tag =>
+  tag.toLowerCase().includes("meeting")
+);
+// 匹配: #meeting, #Meeting, #team-meeting 等
+```
+
+**示例**:
+```markdown
+// 文件: 00 - Daily Plan/2026/02.February/2026-02-03.md
+- [ ] 完成规格书审计 #work
+- [ ] 10:00 团队周会 #meeting
+- [x] 已完成的任务（不会显示）
+```
+
+### 3.2 Nike 项目任务
+
+**来源定义**:
+```
+路径: {nikePath}/**/events/**/*.md
+示例: 03 - Working/01.Nike/03.Nike Calendar/2026/events/Launch-Event.md
+```
+
+**查询规则**:
+```typescript
+dv.pages('"nikePath"')
+  .where(p => {
+    const pathParts = p.file.folder.split('/');
+    return pathParts.some(part => part.toLowerCase() === 'events');
+  })
+  .where(p => "Done" in p.file.frontmatter && p.Done !== true)
+```
+
+**Frontmatter 要求**:
+```yaml
+---
+Due Date: 2026-02-03
+Done: false  # 或不存在
+---
+```
+
+**筛选条件**:
+- 文件夹路径包含 `events`
+- Frontmatter 有 `Done` 字段且值不为 `true`
+- `Due Date` ≤ 今天
+
+**输出字段**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fileName` | string | 文件名（不含 .md） |
+| `dueDate` | string | 格式化日期 YYYY-MM-DD |
+| `link` | Link | 文件链接 |
+
+### 3.3 Holiday 任务
+
+**来源定义**:
+```
+任意位置，通过标签或 frontmatter 识别
+```
+
+**查询规则**:
+```typescript
+dv.pages()
+  .where(p =>
+    p.file.tags?.includes("#holiday") ||
+    p.type === "holiday" ||
+    (Array.isArray(p.type) && p.type.includes("holiday"))
+  )
+```
+
+**识别条件（满足任一）**:
+1. 文件包含 `#holiday` 标签
+2. Frontmatter `type: holiday`
+3. Frontmatter `type` 数组包含 `"holiday"`
+
+**日期解析优先级**:
+1. `p.date` frontmatter 字段
+2. `p.file.day`（如果使用 Daily Notes 格式）
+3. `p.file.name`（尝试解析文件名为日期）
+
+**筛选条件**:
+- 日期 = 今天（不含过期）
+
+**输出字段**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fileName` | string | 节日名称 |
+| `dueDate` | string | 日期 YYYY-MM-DD |
+| `link` | Link | 文件链接 |
+
+### 3.4 周期任务（Recurring）
+
+**配置文件格式**:
+```
+路径: {recurringConfigPath}
+示例: 06 - DATA FILE/recurring-tasks.md
+```
+
+**配置表格式**:
+```markdown
+| 任务名称 | 类型 | 触发条件 | 模式 |
+|---------|------|---------|------|
+| 晨间日记 | daily | - | replace |
+| 周报 | weekly | 5 | accumulate |
+| 月度复盘 | monthly | 1 | skip |
+| 季度总结 | monthly | 1 (3,6,9,12) | replace |
+```
+
+**类型说明**:
+| 类型 | 触发条件格式 | 说明 |
+|------|-------------|------|
+| `daily` | `-` | 每天触发 |
+| `weekly` | `1-7` | 周几触发（1=周一，7=周日） |
+| `monthly` | `1-31` 或 `1 (3,6,9,12)` | 每月几号，可选指定月份 |
+
+**查询逻辑**:
+```typescript
+// 判断今日是否应显示
+if (type === "daily") return true;
+if (type === "weekly" && parseInt(trigger) === moment().isoWeekday()) return true;
+if (type === "monthly") {
+  const [day, months] = parseTrigger(trigger);
+  if (parseInt(day) === moment().date()) {
+    return !months || months.includes(moment().month() + 1);
+  }
+}
+```
+
+**Daily Note 中的周期任务格式**:
+```markdown
+- [ ] 🔄 晨间日记
+- [x] 🔄 已完成的周期任务
+```
+
+**输出字段**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `fileName` | string | 任务名称 |
+| `type` | string | daily/weekly/monthly |
+| `existsInDaily` | boolean | 是否已在日记中 |
+| `isCompleted` | boolean | 是否已完成 |
+
+---
+
+## 4. 技术设计
+
+### 4.1 开发环境
 
 | 工具 | 版本 | 说明 |
 |------|------|------|
 | Node.js | ≥ 18.x | 运行时 |
 | TypeScript | ≥ 5.0 | 类型安全 |
-| [generator-obsidian-plugin](https://github.com/mnaoumov/generator-obsidian-plugin) | latest | 替代官方模板，更完善 |
+| [generator-obsidian-plugin](https://github.com/mnaoumov/generator-obsidian-plugin) | latest | 推荐模板 |
 | [obsidian-dev-utils](https://github.com/mnaoumov/obsidian-dev-utils) | latest | 开发工具包 |
-| esbuild | latest | 打包工具（模板内置） |
+| esbuild | latest | 打包工具 |
 
-### 3.2 项目结构
+### 4.2 项目结构
 
 ```
 task-reminder/
@@ -130,7 +301,11 @@ task-reminder/
 │   ├── main.ts                 # 插件入口
 │   ├── settings.ts             # 设置定义与 UI
 │   ├── services/
-│   │   └── TaskDataService.ts  # 数据获取服务
+│   │   ├── TaskDataService.ts  # 数据获取服务（统一接口）
+│   │   ├── DailyTaskSource.ts  # Daily Note 数据源
+│   │   ├── NikeTaskSource.ts   # Nike 项目数据源
+│   │   ├── HolidayTaskSource.ts # Holiday 数据源
+│   │   └── RecurringTaskSource.ts # 周期任务数据源
 │   ├── ui/
 │   │   ├── ReminderModal.ts    # 提醒弹窗
 │   │   └── StatusBarItem.ts    # 状态栏组件
@@ -143,13 +318,99 @@ task-reminder/
 └── README.md
 ```
 
-### 3.3 核心类设计
+### 4.3 依赖关系
 
-#### 3.3.1 主插件类
+#### Dataview 依赖
+
+- **依赖类型**: **强依赖**
+- **检测方式**: `app.plugins.plugins.dataview?.api`
+- **缺失行为**:
+  1. 插件正常加载（不影响 Obsidian 启动）
+  2. 设置页显示警告："⚠️ 需要安装并启用 Dataview 插件"
+  3. 提醒功能禁用，状态栏显示 `📋 ?`
+  4. 手动触发命令显示提示："请先安装 Dataview 插件"
+
+```typescript
+private checkDataviewReady(): boolean {
+  const dv = this.app.plugins.plugins.dataview?.api;
+  if (!dv) {
+    new Notice("Task Reminder: 需要 Dataview 插件支持", 5000);
+    return false;
+  }
+  return true;
+}
+```
+
+### 4.4 核心接口设计
+
+#### 4.4.1 TaskDataService
+
+```typescript
+// src/services/TaskDataService.ts
+export interface TaskDataService {
+  /**
+   * 获取今日所有任务
+   * @returns Promise<TaskItem[]> 任务列表
+   */
+  getTodayTasks(): Promise<TaskItem[]>;
+
+  /**
+   * 获取今日任务数量
+   * @returns Promise<number> 任务数量
+   */
+  getTaskCount(): Promise<number>;
+
+  /**
+   * 获取完整数据结果（含分类统计）
+   * @returns Promise<TaskDataResult>
+   */
+  getTaskData(): Promise<TaskDataResult>;
+}
+
+// 缓存策略
+interface CacheConfig {
+  ttl: 60000;  // 60秒缓存
+  invalidateOn: ['file-change', 'settings-change'];
+}
+```
+
+#### 4.4.2 类型定义
+
+```typescript
+// src/types.ts
+export interface TaskItem {
+  id: string;           // 唯一标识（path:line）
+  source: 'daily' | 'nike' | 'holiday' | 'recurring';
+  sourceLabel: string;  // 显示标签如 "📅 Daily"
+  text: string;         // 任务文本（截断后，max 60 chars）
+  fullText: string;     // 完整文本
+  isMeeting: boolean;   // 是否为会议（通过 #meeting 标签）
+  filePath: string;     // 来源文件路径
+  line?: number;        // 任务所在行号（用于跳转）
+  dueDate?: string;     // 截止日期
+}
+
+export interface TaskDataResult {
+  tasks: TaskItem[];
+  dailyCount: number;
+  nikeCount: number;
+  holidayCount: number;
+  recurringCount: number;
+  errors: TaskSourceError[];  // 各数据源的错误信息
+}
+
+export interface TaskSourceError {
+  source: string;
+  message: string;
+  recoverable: boolean;
+}
+```
+
+### 4.5 主插件类
 
 ```typescript
 // src/main.ts
-import { Plugin } from 'obsidian';
+import { Plugin, moment } from 'obsidian';
 import { TaskReminderSettings, DEFAULT_SETTINGS, TaskReminderSettingTab } from './settings';
 import { TaskDataService } from './services/TaskDataService';
 import { ReminderModal } from './ui/ReminderModal';
@@ -158,7 +419,7 @@ export default class TaskReminderPlugin extends Plugin {
   settings: TaskReminderSettings;
   private dataService: TaskDataService;
   private statusBarItem: HTMLElement | null = null;
-  private hasShownToday = false;
+  private refreshDebounceTimer: number | null = null;
 
   async onload() {
     await this.loadSettings();
@@ -173,13 +434,25 @@ export default class TaskReminderPlugin extends Plugin {
     this.addCommand({
       id: 'show-task-reminder',
       name: 'Show today\'s task reminder',
-      callback: () => this.showReminder(true) // force = true
+      callback: () => this.showReminder(true) // force = true, 不写入已弹过标记
     });
 
-    // 状态栏
+    // 状态栏（仅桌面端）
     if (this.settings.showStatusBar) {
       this.statusBarItem = this.addStatusBarItem();
+      this.statusBarItem.addClass('task-reminder-status');
+      this.statusBarItem.onClickEvent(() => this.showReminder(true));
       this.updateStatusBar();
+
+      // 定期刷新（每 5 分钟）
+      this.registerInterval(
+        window.setInterval(() => this.updateStatusBar(), 5 * 60 * 1000)
+      );
+
+      // 文件变更刷新（debounce 500ms）
+      this.registerEvent(
+        this.app.vault.on('modify', () => this.debouncedRefresh())
+      );
     }
 
     // 布局就绪后调度提醒
@@ -188,48 +461,88 @@ export default class TaskReminderPlugin extends Plugin {
     });
   }
 
+  private debouncedRefresh() {
+    if (this.refreshDebounceTimer) {
+      window.clearTimeout(this.refreshDebounceTimer);
+    }
+    this.refreshDebounceTimer = window.setTimeout(() => {
+      this.updateStatusBar();
+    }, 500);
+  }
+
   private scheduleReminder() {
     if (!this.settings.enabled) return;
 
-    // 检查今日是否已弹过
-    const todayKey = `task-reminder-${moment().format('YYYY-MM-DD')}`;
-    if (localStorage.getItem(todayKey)) {
-      this.hasShownToday = true;
+    // 检查今日是否已弹过（从插件数据读取）
+    const todayStr = moment().format('YYYY-MM-DD');
+    if (this.settings.lastReminderDate === todayStr) {
       return;
     }
 
     // 延迟弹窗
-    this.registerInterval(
-      window.setTimeout(() => {
-        this.showReminder(false);
-      }, this.settings.popupDelay)
-    );
+    window.setTimeout(() => {
+      this.showReminder(false);
+    }, this.settings.popupDelay);
   }
 
   async showReminder(force: boolean) {
-    if (!force && this.hasShownToday) return;
+    // 检查 Dataview
+    if (!this.checkDataviewReady()) return;
 
-    const tasks = await this.dataService.getTodayTasks();
+    const result = await this.dataService.getTaskData();
 
-    if (tasks.length > 0) {
-      // 标记已弹过
-      const todayKey = `task-reminder-${moment().format('YYYY-MM-DD')}`;
-      localStorage.setItem(todayKey, 'true');
-      this.hasShownToday = true;
+    // 显示错误提示（如有）
+    result.errors.forEach(err => {
+      if (!err.recoverable) {
+        new Notice(`Task Reminder: ${err.source} - ${err.message}`, 5000);
+      }
+    });
 
-      // 显示 Notice
-      new Notice(`⏰ 今日有 ${tasks.length} 个待办任务!`, this.settings.popupDuration);
+    if (result.tasks.length > 0) {
+      // 仅在非强制模式下记录"已弹过"
+      if (!force) {
+        this.settings.lastReminderDate = moment().format('YYYY-MM-DD');
+        await this.saveSettings();
+      }
 
-      // 显示 Modal
-      new ReminderModal(this.app, tasks).open();
+      // 根据设置显示 Notice 和/或 Modal
+      if (this.settings.reminderStyle === 'both' || this.settings.reminderStyle === 'notice') {
+        new Notice(`⏰ 今日有 ${result.tasks.length} 个待办任务!`, this.settings.popupDuration);
+      }
+
+      if (this.settings.reminderStyle === 'both' || this.settings.reminderStyle === 'modal') {
+        new ReminderModal(this.app, result.tasks).open();
+      }
     }
+    // 无任务时不记录，下次启动仍会检查
+  }
+
+  private checkDataviewReady(): boolean {
+    const dv = (this.app as any).plugins?.plugins?.dataview?.api;
+    if (!dv) {
+      new Notice("Task Reminder: 需要安装并启用 Dataview 插件", 5000);
+      return false;
+    }
+    return true;
   }
 
   private async updateStatusBar() {
     if (!this.statusBarItem) return;
-    const count = await this.dataService.getTaskCount();
-    this.statusBarItem.setText(`📋 ${count}`);
-    this.statusBarItem.setAttribute('aria-label', `今日待办: ${count} 项`);
+
+    if (!this.checkDataviewReady()) {
+      this.statusBarItem.setText('📋 ?');
+      this.statusBarItem.setAttribute('aria-label', '需要 Dataview 插件');
+      return;
+    }
+
+    try {
+      const count = await this.dataService.getTaskCount();
+      this.statusBarItem.setText(`📋 ${count}`);
+      this.statusBarItem.setAttribute('aria-label', `今日待办: ${count} 项`);
+    } catch (e) {
+      this.statusBarItem.setText('📋 !');
+      this.statusBarItem.setAttribute('aria-label', '获取任务失败');
+    }
   }
 
   async loadSettings() {
@@ -239,293 +552,282 @@ export default class TaskReminderPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
-}
-```
 
-#### 3.3.2 设置定义
-
-```typescript
-// src/settings.ts
-import { App, PluginSettingTab, Setting } from 'obsidian';
-import TaskReminderPlugin from './main';
-
-export interface TaskReminderSettings {
-  enabled: boolean;
-  popupDelay: number;
-  popupDuration: number;
-  showStatusBar: boolean;
-  taskSources: {
-    daily: boolean;
-    nike: boolean;
-    holiday: boolean;
-    recurring: boolean;
-  };
-  dailyNotePath: string;
-  utilsScriptPath: string;
-  recurringScriptPath: string;
-}
-
-export const DEFAULT_SETTINGS: TaskReminderSettings = {
-  enabled: true,
-  popupDelay: 30000,
-  popupDuration: 8000,
-  showStatusBar: true,
-  taskSources: {
-    daily: true,
-    nike: true,
-    holiday: true,
-    recurring: true
-  },
-  dailyNotePath: '00 - INBOX/01 - Daily',
-  utilsScriptPath: '06 - DATA FILE/99.Settings/05.Code/task-utils.js',
-  recurringScriptPath: '06 - DATA FILE/99.Settings/05.Code/recurring-task-manager.js'
-};
-
-export class TaskReminderSettingTab extends PluginSettingTab {
-  plugin: TaskReminderPlugin;
-
-  constructor(app: App, plugin: TaskReminderPlugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
-
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-
-    containerEl.createEl('h2', { text: 'Task Reminder 设置' });
-
-    // 启用开关
-    new Setting(containerEl)
-      .setName('启用自动提醒')
-      .setDesc('Obsidian 启动时自动显示今日任务提醒')
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.enabled)
-        .onChange(async (value) => {
-          this.plugin.settings.enabled = value;
-          await this.plugin.saveSettings();
-        }));
-
-    // 延迟时间
-    new Setting(containerEl)
-      .setName('延迟时间（秒）')
-      .setDesc('启动后等待多少秒再弹窗（建议等待同步完成）')
-      .addSlider(slider => slider
-        .setLimits(0, 120, 5)
-        .setValue(this.plugin.settings.popupDelay / 1000)
-        .setDynamicTooltip()
-        .onChange(async (value) => {
-          this.plugin.settings.popupDelay = value * 1000;
-          await this.plugin.saveSettings();
-        }));
-
-    // 更多设置项...
+  onunload() {
+    if (this.refreshDebounceTimer) {
+      window.clearTimeout(this.refreshDebounceTimer);
+    }
   }
 }
 ```
 
-#### 3.3.3 类型定义
+### 4.6 ReminderModal（支持点击跳转）
 
 ```typescript
-// src/types.ts
-export interface TaskItem {
-  source: 'daily' | 'nike' | 'holiday' | 'recurring';
-  sourceLabel: string;  // 显示标签如 "📅 Daily"
-  text: string;         // 任务文本（截断后）
-  fullText: string;     // 完整文本
-  isMeeting: boolean;   // 是否为会议
-  filePath?: string;    // 来源文件路径
-  dueDate?: string;     // 截止日期
-}
+// src/ui/ReminderModal.ts
+import { App, Modal } from 'obsidian';
+import { TaskItem } from '../types';
 
-export interface TaskDataResult {
-  tasks: TaskItem[];
-  dailyCount: number;
-  nikeCount: number;
-  holidayCount: number;
-  recurringCount: number;
+export class ReminderModal extends Modal {
+  private tasks: TaskItem[];
+
+  constructor(app: App, tasks: TaskItem[]) {
+    super(app);
+    this.tasks = tasks;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+
+    titleEl.setText(`📋 今日待办提醒 (${this.tasks.length})`);
+
+    const container = contentEl.createDiv({ cls: 'task-reminder-list' });
+
+    this.tasks.forEach(task => {
+      const itemEl = container.createDiv({ cls: 'task-reminder-item' });
+
+      // 来源标签
+      const sourceEl = itemEl.createSpan({ cls: 'task-source-label' });
+      sourceEl.setText(task.sourceLabel);
+
+      // 任务文本（可点击）
+      const textEl = itemEl.createSpan({ cls: 'task-text' });
+      textEl.setText((task.isMeeting ? '🗓️ ' : '• ') + task.text);
+
+      if (task.isMeeting) {
+        textEl.addClass('task-meeting');
+      }
+
+      // 点击跳转到文件
+      itemEl.addEventListener('click', async () => {
+        const file = this.app.vault.getAbstractFileByPath(task.filePath);
+        if (file) {
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(file as any);
+
+          // 如果有行号，滚动到对应位置
+          if (task.line !== undefined) {
+            const view = leaf.view as any;
+            if (view?.editor) {
+              view.editor.setCursor({ line: task.line, ch: 0 });
+              view.editor.scrollIntoView({ from: { line: task.line, ch: 0 }, to: { line: task.line, ch: 0 } }, true);
+            }
+          }
+        }
+        this.close();
+      });
+
+      itemEl.style.cursor = 'pointer';
+    });
+
+    // 关闭按钮
+    const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+    const closeBtn = btnContainer.createEl('button', { text: '知道了 ✓' });
+    closeBtn.addEventListener('click', () => this.close());
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
 }
 ```
 
 ---
 
-## 4. Obsidian 插件开发规范
+## 5. 错误处理矩阵
 
-### 4.1 官方要求（必须遵守）
+| 错误场景 | 用户提示 | 是否禁用来源 | 是否重试 | 日志级别 |
+|---------|---------|-------------|---------|---------|
+| Dataview 未安装/未启用 | Notice + 设置页警告 | 全部禁用 | 否 | warn |
+| Daily Note 路径未配置 | 设置页提示 | 禁用 daily | 否 | info |
+| Daily Note 路径不存在 | Notice（可关闭） | 禁用 daily | 否 | warn |
+| Nike 路径未配置 | 设置页提示 | 禁用 nike | 否 | info |
+| 周期任务配置文件不存在 | Notice（可关闭） | 禁用 recurring | 否 | warn |
+| 周期任务配置格式错误 | Notice + 具体行号 | 禁用 recurring | 否 | error |
+| Dataview 查询超时（>5s） | Notice | 临时禁用 | 下次刷新 | error |
+| 文件读取失败 | 静默跳过 | 跳过该文件 | 否 | debug |
 
-基于 [Obsidian 插件提交要求](https://docs.obsidian.md/Plugins/Releasing/Submission+requirements+for+plugins)：
+```typescript
+// 错误处理示例
+try {
+  const tasks = await this.queryDailyTasks();
+  return { tasks, error: null };
+} catch (e) {
+  console.warn('[TaskReminder] Daily tasks query failed:', e);
+  return {
+    tasks: [],
+    error: {
+      source: 'daily',
+      message: e.message,
+      recoverable: true
+    }
+  };
+}
+```
 
-| 要求 | 说明 | 本插件应对 |
-|------|------|------------|
-| **描述 ≤250 字符** | 以句号结尾，无 emoji | ✅ 见 1.3 节 |
-| **移除示例代码** | 提交前清理模板代码 | ✅ 将执行 |
-| **命令 ID 不含插件 ID** | Obsidian 自动添加前缀 | ✅ 使用 `show-task-reminder` |
-| **设置 minAppVersion** | 使用 API 对应的最低版本 | 设为 `1.4.0` |
-| **桌面专用 API 标记** | 如使用 Node.js API 需设置 `isDesktopOnly` | 本插件仅用 Web API，设为 `false` |
+---
 
-### 4.2 事件管理
+## 6. Obsidian 插件开发规范
+
+### 6.1 官方要求
+
+| 要求 | 本插件应对 |
+|------|------------|
+| 描述 ≤250 字符 | ✅ "Displays a daily task reminder popup when Obsidian starts, showing pending tasks from Daily Notes and custom sources." (117 chars) |
+| 移除示例代码 | ✅ 将执行 |
+| 命令 ID 不含插件 ID | ✅ 使用 `show-task-reminder` |
+| 设置 minAppVersion | `1.4.0`（Dataview API 稳定版本） |
+| isDesktopOnly | `true`（状态栏仅桌面端） |
+
+### 6.2 事件管理
 
 ```typescript
 // ✅ 正确：使用 registerEvent 自动清理
 this.registerEvent(
-  this.app.vault.on('create', (file) => {
-    // 处理文件创建
-  })
+  this.app.vault.on('modify', () => this.debouncedRefresh())
 );
 
 // ✅ 正确：使用 registerInterval 自动清理
 this.registerInterval(
-  window.setInterval(() => this.updateStatusBar(), 60000)
+  window.setInterval(() => this.updateStatusBar(), 5 * 60 * 1000)
 );
-
-// ❌ 错误：直接添加事件监听器（不会自动清理）
-window.addEventListener('click', handler);
 ```
 
-### 4.3 布局就绪检查
+### 6.3 安全合规
 
-```typescript
-// 方法一：使用回调（推荐）
-this.app.workspace.onLayoutReady(() => {
-  // 布局已就绪，可以安全操作 UI
-});
-
-// 方法二：检查标志
-if (this.app.workspace.layoutReady) {
-  // 已就绪
-} else {
-  this.registerEvent(
-    this.app.workspace.on('layout-ready', () => {
-      // 等待就绪
-    })
-  );
-}
-```
-
-### 4.4 避免的模式
-
-| ❌ 避免 | ✅ 推荐 | 原因 |
-|---------|---------|------|
-| `cachedRead` + 写回 | `read` → 修改 → `modify` | 防止数据丢失 |
-| 私有 API（`app.internalPlugins`） | 公开 API | 兼容性 |
-| `console.log` | `console.debug` 或条件日志 | 生产环境清洁 |
-| 同步阻塞操作 | `async/await` | 性能 |
-| 硬编码路径 | 设置项配置 | 灵活性 |
-
-### 4.5 代码审查要点
-
-基于 [Liam Cain 的插件审查指南](https://liamca.in/Obsidian/Plugin+Review+Guide/index)：
-
-1. **数据丢失风险**: 本插件只读取数据，不修改文件 ✅
-2. **安全漏洞**: 不执行外部代码、不发送网络请求 ✅
-3. **逻辑错误**: 需确保日期比较正确
-4. **性能**: 避免在 `onload` 中执行耗时操作
+- ✅ **不使用 eval**：所有数据源逻辑编译进插件
+- ✅ **不执行外部代码**：不加载用户 vault 中的 JS 文件
+- ✅ **不发送网络请求**：纯本地操作
+- ✅ **只读操作**：不修改用户笔记内容
 
 ---
 
-## 5. 与现有代码的集成
+## 7. 测试计划
 
-### 5.1 复用策略
+### 7.1 功能测试
 
-现有的 `task-utils.js` 和 `recurring-task-manager.js` 是纯 JavaScript 模块，插件有两种集成方式：
+| 测试项 | 预期结果 | 验收标准 |
+|--------|----------|----------|
+| 首次启动 | 延迟后显示弹窗 | 延迟时间 = popupDelay ± 100ms |
+| 同日二次启动 | 不再弹窗 | lastReminderDate 已记录 |
+| 跨日启动 | 重新弹窗 | 日期变化后重新触发 |
+| 手动触发命令 | 强制显示弹窗 | 不写入 lastReminderDate |
+| 禁用插件设置 | 不弹窗 | enabled = false 时跳过 |
+| 无任务时 | 不弹窗，不记录 | 下次启动仍检查 |
+| 点击任务跳转 | 打开文件并定位 | 滚动到任务行 |
+| Dataview 未安装 | 显示警告，功能禁用 | Notice + 设置页提示 |
 
-#### 方案 A：动态加载（保持现有脚本）
-
-```typescript
-// TaskDataService.ts
-async loadUtils(): Promise<any> {
-  const utilsFile = this.app.vault.getAbstractFileByPath(
-    this.settings.utilsScriptPath
-  );
-  if (!utilsFile) throw new Error('Utils script not found');
-
-  const code = await this.app.vault.read(utilsFile as TFile);
-  return eval(`(function(){ ${code} })()`);
-}
-```
-
-**优点**: 无需修改现有脚本，dataviewjs 和插件共用同一份代码
-**缺点**: `eval` 使用需谨慎，类型提示较弱
-
-#### 方案 B：TypeScript 重写（推荐长期）
-
-将 `task-utils.js` 核心逻辑重写为 TypeScript 模块，编译后：
-- 插件直接 import 使用
-- dataviewjs 通过 `app.plugins.plugins['task-reminder'].api` 调用
-
-**优点**: 类型安全，更好的维护性
-**缺点**: 需要迁移工作
-
-### 5.2 推荐：渐进式迁移
-
-1. **Phase 1**: 使用方案 A 快速上线
-2. **Phase 2**: 逐步将核心函数移入插件
-3. **Phase 3**: 通过插件 API 暴露给 dataviewjs
-
----
-
-## 6. 测试计划
-
-### 6.1 功能测试
+### 7.2 多 Vault 测试
 
 | 测试项 | 预期结果 |
 |--------|----------|
-| 首次启动 | 延迟后显示弹窗 |
-| 同日二次启动 | 不再弹窗 |
-| 跨日启动 | 重新弹窗 |
-| 手动触发命令 | 强制显示弹窗 |
-| 禁用插件设置 | 不弹窗 |
-| 无任务时 | 不弹窗 |
+| Vault A 弹过后打开 Vault B | Vault B 仍会弹窗 |
+| 两个 Vault 同时打开 | 各自独立弹窗 |
 
-### 6.2 兼容性测试
+### 7.3 兼容性测试
 
-- [ ] Obsidian Desktop (Windows/macOS/Linux)
-- [ ] Obsidian Mobile (iOS/Android) - 如适用
+- [x] Obsidian Desktop (Windows)
+- [ ] Obsidian Desktop (macOS)
+- [ ] Obsidian Desktop (Linux)
 - [ ] 与 Dataview 插件共存
 - [ ] 与 Remotely Save 插件共存
 
+### 7.4 移动端
+
+- **不支持**：`isDesktopOnly: true`
+- 移动端安装插件时会显示兼容性警告
+
 ---
 
-## 7. 发布计划
+## 8. 发布计划
 
-### 7.1 里程碑
+### 8.1 里程碑
 
 | 阶段 | 内容 | 时间 |
 |------|------|------|
 | M1 | 脚手架搭建 + 基础弹窗 | Week 1 |
 | M2 | 设置面板 + 命令注册 | Week 2 |
-| M3 | 数据服务集成 | Week 3 |
-| M4 | 测试 + 文档 | Week 4 |
-| M5 | 提交社区插件仓库 | Week 5 |
+| M3 | 数据服务实现（4 个数据源） | Week 3 |
+| M4 | 错误处理 + 点击跳转 | Week 4 |
+| M5 | 测试 + 文档 | Week 5 |
+| M6 | 提交社区插件仓库 | Week 6 |
 
-### 7.2 提交清单
+### 8.2 提交清单
 
 - [ ] `manifest.json` 完整填写
-- [ ] `README.md` 包含使用说明
+- [ ] `README.md` 包含使用说明、截图、配置指南
 - [ ] `LICENSE` 文件（MIT）
 - [ ] GitHub Release 包含 `main.js`, `manifest.json`, `styles.css`
 - [ ] 向 `obsidian-releases` 仓库提交 PR
 
 ---
 
-## 8. 附录
+## 9. 附录
 
-### 8.1 参考资源
+### 9.1 设置界面设计
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Task Reminder 设置                                   │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│ ⚠️ 需要 Dataview 插件支持 [安装指南]                  │  ← 仅在未检测到时显示
+│                                                      │
+│ ── 基础设置 ──                                       │
+│                                                      │
+│ 启用自动提醒                              [开关] ✓   │
+│ Obsidian 启动时自动显示今日任务提醒                   │
+│                                                      │
+│ 延迟时间                                  [30] 秒    │
+│ 启动后等待多少秒再弹窗（建议等待同步完成）              │
+│                                                      │
+│ 提醒样式                              [▼ 两者都显示]  │
+│   • 两者都显示                                       │
+│   • 仅通知栏                                         │
+│   • 仅弹窗                                           │
+│                                                      │
+│ 显示状态栏指示器                          [开关] ✓   │
+│                                                      │
+│ ── 数据源配置 ──                                     │
+│                                                      │
+│ Daily Note 路径                    [📁] 00 - Daily   │
+│ 包含 Daily Note 任务                      [开关] ✓   │
+│                                                      │
+│ Nike 日历路径                      [📁] 03 - Working │
+│ 包含 Nike 项目任务                        [开关] ✓   │
+│                                                      │
+│ 周期任务配置                       [📁] recurring... │
+│ 包含周期任务                              [开关] ✓   │
+│                                                      │
+│ 包含节假日                                [开关] ✓   │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### 9.2 参考资源
 
 - [Obsidian Plugin API 文档](https://docs.obsidian.md/Plugins)
-- [generator-obsidian-plugin](https://github.com/mnaoumov/generator-obsidian-plugin) - 推荐模板
-- [obsidian-dev-utils](https://github.com/mnaoumov/obsidian-dev-utils) - 开发工具
+- [generator-obsidian-plugin](https://github.com/mnaoumov/generator-obsidian-plugin)
+- [obsidian-dev-utils](https://github.com/mnaoumov/obsidian-dev-utils)
 - [Obsidian 插件审查指南](https://liamca.in/Obsidian/Plugin+Review+Guide/index)
 - [插件提交要求](https://docs.obsidian.md/Plugins/Releasing/Submission+requirements+for+plugins)
 
-### 8.2 现有代码位置
+### 9.3 审计报告回应
 
-| 文件 | 路径 |
-|------|------|
-| 当前提醒逻辑 | `首页任务列表测试.md` 第 43-133 行 |
-| 任务工具函数 | `06 - DATA FILE/99.Settings/05.Code/task-utils.js` |
-| 周期任务管理 | `06 - DATA FILE/99.Settings/05.Code/recurring-task-manager.js` |
+| 审计编号 | 问题 | 解决方案 |
+|---------|------|----------|
+| P0-1 | eval 动态加载 | ✅ 移除，逻辑编译进插件 |
+| P0-2 | 数据源规则缺失 | ✅ 新增第 3 节数据合同 |
+| P0-3 | Dataview 依赖未定义 | ✅ 明确为强依赖，4.3 节 |
+| P1-4 | localStorage 跨 vault | ✅ 改用 saveData()，2.3 节 |
+| P1-5 | 接口类型不一致 | ✅ 统一为 Promise<T>，4.4 节 |
+| P1-6 | 状态栏只更新一次 | ✅ 增加刷新策略，2.1/F3 |
+| P1-7 | 弹窗语义歧义 | ✅ 明确有任务才记录，2.3 节 |
+| P1-8 | Notice+Modal UX | ✅ 增加 reminderStyle 设置 |
+| P2-9 | 硬编码路径 | ✅ 默认为空，需用户配置 |
+| P2-10 | 错误处理缺失 | ✅ 新增第 5 节错误矩阵 |
+| P2-11 | 移动端不明确 | ✅ 明确 isDesktopOnly: true |
 
 ---
 
-**下一步**: 确认规格后，开始搭建插件脚手架。
+**规格书更新完成，已解决所有审计问题。**
