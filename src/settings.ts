@@ -3,7 +3,7 @@
  * 根据 SPEC.md §2.2 配置项定义
  */
 
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, TFolder, TFile, AbstractInputSuggest, TAbstractFile } from 'obsidian';
 import type TaskReminderPlugin from './main';
 
 /** 提醒样式类型 */
@@ -59,6 +59,89 @@ export const DEFAULT_SETTINGS: TaskReminderSettings = {
   recurringConfigPath: '',
   lastReminderDate: ''
 };
+
+/**
+ * 文件夹路径自动补全建议器
+ */
+class FolderSuggest extends AbstractInputSuggest<TFolder> {
+  private inputEl: HTMLInputElement;
+
+  constructor(app: App, inputEl: HTMLInputElement) {
+    super(app, inputEl);
+    this.inputEl = inputEl;
+  }
+
+  getSuggestions(inputStr: string): TFolder[] {
+    const abstractFiles = this.app.vault.getAllLoadedFiles();
+    const folders: TFolder[] = [];
+    const lowerCaseInputStr = inputStr.toLowerCase();
+
+    abstractFiles.forEach((folder: TAbstractFile) => {
+      if (
+        folder instanceof TFolder &&
+        folder.path.toLowerCase().contains(lowerCaseInputStr)
+      ) {
+        folders.push(folder);
+      }
+    });
+
+    // 按路径长度排序，优先显示较短的路径
+    return folders.sort((a, b) => a.path.length - b.path.length).slice(0, 20);
+  }
+
+  renderSuggestion(folder: TFolder, el: HTMLElement): void {
+    el.createEl('div', { text: folder.path, cls: 'suggestion-content' });
+  }
+
+  selectSuggestion(folder: TFolder): void {
+    this.inputEl.value = folder.path;
+    this.inputEl.trigger('input');
+    this.close();
+  }
+}
+
+/**
+ * 文件路径自动补全建议器（用于 .md 文件）
+ */
+class FileSuggest extends AbstractInputSuggest<TFile> {
+  private inputEl: HTMLInputElement;
+  private extension: string;
+
+  constructor(app: App, inputEl: HTMLInputElement, extension: string = 'md') {
+    super(app, inputEl);
+    this.inputEl = inputEl;
+    this.extension = extension;
+  }
+
+  getSuggestions(inputStr: string): TFile[] {
+    const abstractFiles = this.app.vault.getAllLoadedFiles();
+    const files: TFile[] = [];
+    const lowerCaseInputStr = inputStr.toLowerCase();
+
+    abstractFiles.forEach((file: TAbstractFile) => {
+      if (
+        file instanceof TFile &&
+        file.extension === this.extension &&
+        file.path.toLowerCase().contains(lowerCaseInputStr)
+      ) {
+        files.push(file);
+      }
+    });
+
+    // 按路径长度排序，优先显示较短的路径
+    return files.sort((a, b) => a.path.length - b.path.length).slice(0, 20);
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.createEl('div', { text: file.path, cls: 'suggestion-content' });
+  }
+
+  selectSuggestion(file: TFile): void {
+    this.inputEl.value = file.path;
+    this.inputEl.trigger('input');
+    this.close();
+  }
+}
 
 /** 设置面板 */
 export class TaskReminderSettingTab extends PluginSettingTab {
@@ -152,16 +235,21 @@ export class TaskReminderSettingTab extends PluginSettingTab {
     // 数据源配置
     containerEl.createEl('h2', { text: '数据源配置' });
 
+    // Daily Note 路径（带自动补全）
     new Setting(containerEl)
       .setName('Daily Note 路径')
-      .setDesc('Daily Note 文件夹路径（如：00 - Daily Plan）')
-      .addText(text => text
-        .setPlaceholder('00 - Daily Plan')
-        .setValue(this.plugin.settings.dailyNotePath)
-        .onChange(async (value) => {
-          this.plugin.settings.dailyNotePath = value;
-          await this.plugin.saveSettings();
-        }));
+      .setDesc('Daily Note 文件夹路径（输入时自动搜索）')
+      .addText(text => {
+        text
+          .setPlaceholder('输入搜索文件夹...')
+          .setValue(this.plugin.settings.dailyNotePath)
+          .onChange(async (value) => {
+            this.plugin.settings.dailyNotePath = value;
+            await this.plugin.saveSettings();
+          });
+        // 添加文件夹自动补全
+        new FolderSuggest(this.app, text.inputEl);
+      });
 
     new Setting(containerEl)
       .setName('包含 Daily Note 任务')
@@ -172,16 +260,21 @@ export class TaskReminderSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    // Nike 日历路径（带自动补全）
     new Setting(containerEl)
       .setName('Nike 日历路径')
-      .setDesc('Nike 项目日历文件夹路径')
-      .addText(text => text
-        .setPlaceholder('03 - Working/01.Nike/03.Nike Calendar')
-        .setValue(this.plugin.settings.nikePath)
-        .onChange(async (value) => {
-          this.plugin.settings.nikePath = value;
-          await this.plugin.saveSettings();
-        }));
+      .setDesc('Nike 项目日历文件夹路径（输入时自动搜索）')
+      .addText(text => {
+        text
+          .setPlaceholder('输入搜索文件夹...')
+          .setValue(this.plugin.settings.nikePath)
+          .onChange(async (value) => {
+            this.plugin.settings.nikePath = value;
+            await this.plugin.saveSettings();
+          });
+        // 添加文件夹自动补全
+        new FolderSuggest(this.app, text.inputEl);
+      });
 
     new Setting(containerEl)
       .setName('包含 Nike 项目任务')
@@ -192,16 +285,21 @@ export class TaskReminderSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    // 周期任务配置文件（带文件自动补全）
     new Setting(containerEl)
       .setName('周期任务配置文件')
-      .setDesc('周期任务配置表格所在的文件路径')
-      .addText(text => text
-        .setPlaceholder('06 - DATA FILE/recurring-tasks.md')
-        .setValue(this.plugin.settings.recurringConfigPath)
-        .onChange(async (value) => {
-          this.plugin.settings.recurringConfigPath = value;
-          await this.plugin.saveSettings();
-        }));
+      .setDesc('周期任务配置表格所在的 .md 文件（输入时自动搜索）')
+      .addText(text => {
+        text
+          .setPlaceholder('输入搜索文件...')
+          .setValue(this.plugin.settings.recurringConfigPath)
+          .onChange(async (value) => {
+            this.plugin.settings.recurringConfigPath = value;
+            await this.plugin.saveSettings();
+          });
+        // 添加文件自动补全（限 .md 文件）
+        new FileSuggest(this.app, text.inputEl, 'md');
+      });
 
     new Setting(containerEl)
       .setName('包含周期任务')
