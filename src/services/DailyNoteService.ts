@@ -28,9 +28,13 @@ export class DailyNoteService {
 
   /**
    * 获取今日日记路径
+   * 修复 P0-2：路径规范化处理
    */
   getDailyNotePath(): string {
-    const dailyPath = this.settings.dailyNotePath;
+    let dailyPath = this.settings.dailyNotePath?.trim() || '';
+    // 去掉尾随斜杠，避免 //
+    dailyPath = dailyPath.replace(/\/+$/, '');
+
     const year = moment().format('YYYY');
     const month = moment().month() + 1;
     const dateStr = moment().format('YYYY-MM-DD');
@@ -39,13 +43,27 @@ export class DailyNoteService {
   }
 
   /**
+   * 检查 dailyNotePath 是否已配置
+   */
+  isDailyNotePathConfigured(): boolean {
+    return !!this.settings.dailyNotePath?.trim();
+  }
+
+  /**
    * 将周期任务写入 Daily Note
    * @param tasks 待生成的周期任务列表
    * @returns 成功写入的任务数量
+   * 修复 P0-2：写入前校验 dailyNotePath
+   * 修复 P1-3：添加去重和二次确认
    */
   async writeRecurringTasks(tasks: PendingRecurringTask[]): Promise<number> {
     if (tasks.length === 0) {
       return 0;
+    }
+
+    // P0-2: 校验 dailyNotePath 是否已配置
+    if (!this.isDailyNotePathConfigured()) {
+      throw new Error('请先在设置中配置 Daily Note 路径');
     }
 
     const dailyPath = this.getDailyNotePath();
@@ -60,11 +78,24 @@ export class DailyNoteService {
       throw new Error(`无法访问日记文件: ${dailyPath}`);
     }
 
-    // 读取现有内容
+    // P1-3: 写入前重新读取内容，确保获取最新状态
     let content = await this.app.vault.read(file);
 
+    // P1-3: 对输入任务按名称去重
+    const uniqueTasks = this.deduplicateTasks(tasks);
+
+    // P1-3: 过滤掉已存在于文件中的任务
+    const tasksToWrite = uniqueTasks.filter(task => {
+      const taskPattern = new RegExp(`- \\[.\\] 🔄\\s+${this.escapeRegex(task.name)}`, 'i');
+      return !taskPattern.test(content);
+    });
+
+    if (tasksToWrite.length === 0) {
+      return 0;
+    }
+
     // 生成任务文本
-    const taskLines = tasks.map(task => `- [ ] 🔄 ${task.name}`).join('\n');
+    const taskLines = tasksToWrite.map(task => `- [ ] 🔄 ${task.name}`).join('\n');
 
     // 追加到文件末尾
     if (content.length > 0 && !content.endsWith('\n')) {
@@ -75,7 +106,28 @@ export class DailyNoteService {
     // 写入文件
     await this.app.vault.modify(file, content);
 
-    return tasks.length;
+    return tasksToWrite.length;
+  }
+
+  /**
+   * 对任务按名称去重
+   */
+  private deduplicateTasks(tasks: PendingRecurringTask[]): PendingRecurringTask[] {
+    const seen = new Set<string>();
+    return tasks.filter(task => {
+      if (seen.has(task.name)) {
+        return false;
+      }
+      seen.add(task.name);
+      return true;
+    });
+  }
+
+  /**
+   * 转义正则表达式特殊字符
+   */
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**

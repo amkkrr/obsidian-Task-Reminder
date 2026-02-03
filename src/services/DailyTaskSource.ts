@@ -55,8 +55,14 @@ export class DailyTaskSource {
 
         // 只包含今天或之前的任务（包含过期）
         if (fileDate.isValid() && fileDate.isSameOrBefore(today, 'day')) {
-          const isMeeting = this.isMeetingTask(task.tags || []);
           const fullText = task.text || '';
+
+          // P1-1: 过滤掉 🔄 前缀的任务（归属 Recurring 源）
+          if (fullText.includes('🔄')) {
+            continue;
+          }
+
+          const isMeeting = this.isMeetingTask(task.tags || []);
           const text = this.truncateText(fullText, 60);
 
           tasks.push({

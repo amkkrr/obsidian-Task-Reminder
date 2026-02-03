@@ -79,7 +79,7 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
     abstractFiles.forEach((folder: TAbstractFile) => {
       if (
         folder instanceof TFolder &&
-        folder.path.toLowerCase().contains(lowerCaseInputStr)
+        folder.path.toLowerCase().includes(lowerCaseInputStr)
       ) {
         folders.push(folder);
       }
@@ -122,7 +122,7 @@ class FileSuggest extends AbstractInputSuggest<TFile> {
       if (
         file instanceof TFile &&
         file.extension === this.extension &&
-        file.path.toLowerCase().contains(lowerCaseInputStr)
+        file.path.toLowerCase().includes(lowerCaseInputStr)
       ) {
         files.push(file);
       }

@@ -27,57 +27,13 @@ export class RecurringTaskSource {
   }
 
   /**
-   * 获取今日周期任务
+   * 获取今日周期任务（仅返回已存在于 Daily Note 且未完成的任务）
+   * 修复 P0-1：避免与 pendingTasks 重复展示
    */
   async getTasks(dv: DataviewApi): Promise<TaskItem[]> {
-    const configPath = this.settings.recurringConfigPath;
-    if (!configPath) {
-      return [];
-    }
-
-    const tasks: TaskItem[] = [];
-    const todayStr = moment().format('YYYY-MM-DD');
-
-    try {
-      // 1. 解析配置表
-      const configs = await this.parseConfigFile(configPath);
-      if (configs.length === 0) {
-        return [];
-      }
-
-      // 2. 筛选今日应显示的任务
-      const todayConfigs = this.filterTodayTasks(configs);
-
-      // 3. 检查日记中的完成状态
-      const dailyStatus = await this.checkDailyNoteStatus(todayConfigs);
-
-      // 4. 只返回未完成的周期任务
-      for (const config of todayConfigs) {
-        const status = dailyStatus.get(config.name);
-
-        // 如果已完成，跳过
-        if (status?.isCompleted) {
-          continue;
-        }
-
-        tasks.push({
-          id: `recurring:${config.name}`,
-          source: 'recurring',
-          sourceLabel: SOURCE_LABELS.recurring,
-          text: config.name,
-          fullText: `🔄 ${config.name}`,
-          isMeeting: false,
-          filePath: this.getDailyNotePath(),
-          line: undefined,
-          dueDate: todayStr
-        });
-      }
-    } catch (e) {
-      console.error('[TaskReminder] Error querying recurring tasks:', e);
-      throw e;
-    }
-
-    return tasks;
+    // 复用 getFullResult，只返回已存在的任务部分
+    const result = await this.getFullResult(dv);
+    return result.tasks;
   }
 
   /**

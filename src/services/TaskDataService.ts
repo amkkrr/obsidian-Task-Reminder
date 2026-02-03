@@ -3,9 +3,9 @@
  * 根据 SPEC.md §4.4.1 定义
  */
 
-import { App, moment } from 'obsidian';
+import { App } from 'obsidian';
 import { TaskReminderSettings } from '../settings';
-import { TaskItem, TaskDataResult, TaskSourceError, DataviewApi, SOURCE_LABELS, PendingRecurringTask } from '../types';
+import { TaskItem, TaskDataResult, TaskSourceError, DataviewApi, PendingRecurringTask } from '../types';
 import { DailyTaskSource } from './DailyTaskSource';
 import { NikeTaskSource } from './NikeTaskSource';
 import { HolidayTaskSource } from './HolidayTaskSource';
@@ -184,9 +184,15 @@ export class TaskDataService {
 
   /**
    * 获取待生成的周期任务（F4 功能）
+   * 修复 P0-2：若 dailyNotePath 未配置，返回空数组
    */
   async getPendingRecurringTasks(): Promise<PendingRecurringTask[]> {
     if (!this.settings.taskSources.recurring) {
+      return [];
+    }
+
+    // P0-2: 若 dailyNotePath 未配置，不返回待生成任务
+    if (!this.settings.dailyNotePath?.trim()) {
       return [];
     }
 

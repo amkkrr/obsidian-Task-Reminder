@@ -3,7 +3,7 @@
  * 根据 SPEC.md §4.6 定义
  */
 
-import { App, Modal, TFile, Notice } from 'obsidian';
+import { App, Modal, TFile, Notice, moment } from 'obsidian';
 import { TaskItem, PendingRecurringTask } from '../types';
 
 /** 生成回调类型 */
@@ -159,9 +159,10 @@ export class ReminderModal extends Modal {
 
   /**
    * 检查是否过期
+   * 修复 P1-2：使用本地时间而非 UTC
    */
   private isOverdue(dueDate: string): boolean {
-    const today = new Date().toISOString().split('T')[0];
+    const today = moment().format('YYYY-MM-DD');
     return dueDate < today;
   }
 
