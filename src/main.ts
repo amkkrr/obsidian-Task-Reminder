@@ -6,12 +6,15 @@
 import { Plugin, Notice, Platform, moment } from 'obsidian';
 import { TaskReminderSettings, DEFAULT_SETTINGS, TaskReminderSettingTab } from './settings';
 import { TaskDataService } from './services/TaskDataService';
+import { DailyNoteService } from './services/DailyNoteService';
 import { ReminderModal } from './ui/ReminderModal';
 import { StatusBarItem } from './ui/StatusBarItem';
+import { PendingRecurringTask } from './types';
 
 export default class TaskReminderPlugin extends Plugin {
   settings: TaskReminderSettings;
   private dataService: TaskDataService;
+  private dailyNoteService: DailyNoteService;
   private statusBarItem: StatusBarItem | null = null;
   private statusBarEl: HTMLElement | null = null;
   private refreshDebounceTimer: number | null = null;
@@ -25,6 +28,9 @@ export default class TaskReminderPlugin extends Plugin {
 
     // 初始化数据服务
     this.dataService = new TaskDataService(this.app, this.settings);
+
+    // 初始化日记写入服务（F4 功能）
+    this.dailyNoteService = new DailyNoteService(this.app, this.settings);
 
     // 注册设置面板
     this.addSettingTab(new TaskReminderSettingTab(this.app, this));
@@ -136,6 +142,9 @@ export default class TaskReminderPlugin extends Plugin {
     console.log('[TaskReminder] Fetching task data...');
     const result = await this.dataService.getTaskData();
 
+    // 获取待生成的周期任务（F4 功能）
+    const pendingRecurringTasks = await this.dataService.getPendingRecurringTasks();
+
     // 显示错误提示（如有）
     result.errors.forEach(err => {
       if (!err.recoverable) {
@@ -143,9 +152,11 @@ export default class TaskReminderPlugin extends Plugin {
       }
     });
 
-    console.log(`[TaskReminder] Found ${result.tasks.length} tasks`);
+    console.log(`[TaskReminder] Found ${result.tasks.length} tasks, ${pendingRecurringTasks.length} pending recurring`);
 
-    if (result.tasks.length > 0) {
+    const hasTasks = result.tasks.length > 0 || pendingRecurringTasks.length > 0;
+
+    if (hasTasks) {
       // 仅在非强制模式下记录"已弹过"
       if (!force) {
         this.settings.lastReminderDate = moment().format('YYYY-MM-DD');
@@ -155,14 +166,19 @@ export default class TaskReminderPlugin extends Plugin {
 
       // 根据设置显示 Notice 和/或 Modal
       if (this.settings.reminderStyle === 'both' || this.settings.reminderStyle === 'notice') {
-        new Notice(
-          `⏰ 今日有 ${result.tasks.length} 个待办任务!`,
-          this.settings.popupDuration
-        );
+        const taskMsg = result.tasks.length > 0 ? `${result.tasks.length} 个待办任务` : '';
+        const pendingMsg = pendingRecurringTasks.length > 0 ? `${pendingRecurringTasks.length} 个待生成` : '';
+        const msg = [taskMsg, pendingMsg].filter(Boolean).join(', ');
+        new Notice(`⏰ 今日有 ${msg}!`, this.settings.popupDuration);
       }
 
       if (this.settings.reminderStyle === 'both' || this.settings.reminderStyle === 'modal') {
-        new ReminderModal(this.app, result.tasks).open();
+        new ReminderModal(
+          this.app,
+          result.tasks,
+          pendingRecurringTasks,
+          (tasks) => this.generateRecurringTasks(tasks)
+        ).open();
       }
     } else {
       console.log('[TaskReminder] No tasks found, not recording as shown');
@@ -171,6 +187,17 @@ export default class TaskReminderPlugin extends Plugin {
         new Notice('✅ 今日没有待办任务!', 3000);
       }
     }
+  }
+
+  /**
+   * 生成周期任务到 Daily Note（F4 功能）
+   */
+  private async generateRecurringTasks(tasks: PendingRecurringTask[]): Promise<number> {
+    const count = await this.dailyNoteService.writeRecurringTasks(tasks);
+    // 刷新缓存和状态栏
+    this.dataService.invalidateCache();
+    await this.updateStatusBar();
+    return count;
   }
 
   /**
@@ -200,6 +227,10 @@ export default class TaskReminderPlugin extends Plugin {
     // 更新数据服务的设置引用
     if (this.dataService) {
       this.dataService.updateSettings(this.settings);
+    }
+    // 更新日记服务的设置引用（F4 功能）
+    if (this.dailyNoteService) {
+      this.dailyNoteService.updateSettings(this.settings);
     }
   }
 

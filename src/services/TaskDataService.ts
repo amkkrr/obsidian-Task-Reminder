@@ -5,7 +5,7 @@
 
 import { App, moment } from 'obsidian';
 import { TaskReminderSettings } from '../settings';
-import { TaskItem, TaskDataResult, TaskSourceError, DataviewApi, SOURCE_LABELS } from '../types';
+import { TaskItem, TaskDataResult, TaskSourceError, DataviewApi, SOURCE_LABELS, PendingRecurringTask } from '../types';
 import { DailyTaskSource } from './DailyTaskSource';
 import { NikeTaskSource } from './NikeTaskSource';
 import { HolidayTaskSource } from './HolidayTaskSource';
@@ -180,5 +180,27 @@ export class TaskDataService {
     this.cacheTime = Date.now();
 
     return result;
+  }
+
+  /**
+   * 获取待生成的周期任务（F4 功能）
+   */
+  async getPendingRecurringTasks(): Promise<PendingRecurringTask[]> {
+    if (!this.settings.taskSources.recurring) {
+      return [];
+    }
+
+    const dv = this.getDataviewApi();
+    if (!dv) {
+      return [];
+    }
+
+    try {
+      const result = await this.recurringSource.getFullResult(dv);
+      return result.pendingTasks;
+    } catch (e) {
+      console.warn('[TaskReminder] Failed to get pending recurring tasks:', e);
+      return [];
+    }
   }
 }

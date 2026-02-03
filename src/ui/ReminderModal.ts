@@ -3,15 +3,27 @@
  * 根据 SPEC.md §4.6 定义
  */
 
-import { App, Modal, TFile } from 'obsidian';
-import { TaskItem } from '../types';
+import { App, Modal, TFile, Notice } from 'obsidian';
+import { TaskItem, PendingRecurringTask } from '../types';
+
+/** 生成回调类型 */
+export type GenerateCallback = (tasks: PendingRecurringTask[]) => Promise<number>;
 
 export class ReminderModal extends Modal {
   private tasks: TaskItem[];
+  private pendingRecurringTasks: PendingRecurringTask[];
+  private onGenerate?: GenerateCallback;
 
-  constructor(app: App, tasks: TaskItem[]) {
+  constructor(
+    app: App,
+    tasks: TaskItem[],
+    pendingRecurringTasks: PendingRecurringTask[] = [],
+    onGenerate?: GenerateCallback
+  ) {
     super(app);
     this.tasks = tasks;
+    this.pendingRecurringTasks = pendingRecurringTasks;
+    this.onGenerate = onGenerate;
   }
 
   onOpen() {
@@ -63,8 +75,33 @@ export class ReminderModal extends Modal {
       }
     }
 
+    // 渲染待生成的周期任务区域
+    this.renderPendingSection(container);
+
     // 底部按钮
     const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+
+    // 如果有待生成的周期任务，显示生成按钮
+    if (this.pendingRecurringTasks.length > 0 && this.onGenerate) {
+      const generateBtn = btnContainer.createEl('button', {
+        text: `🔄 生成到 Daily Note (${this.pendingRecurringTasks.length})`
+      });
+      generateBtn.addEventListener('click', async () => {
+        generateBtn.disabled = true;
+        generateBtn.setText('生成中...');
+
+        try {
+          const count = await this.onGenerate!(this.pendingRecurringTasks);
+          new Notice(`✅ 已生成 ${count} 个周期任务到 Daily Note`);
+          this.close();
+        } catch (e) {
+          new Notice(`❌ 生成失败: ${(e as Error).message}`);
+          generateBtn.disabled = false;
+          generateBtn.setText(`🔄 生成到 Daily Note (${this.pendingRecurringTasks.length})`);
+        }
+      });
+    }
+
     const closeBtn = btnContainer.createEl('button', { text: '知道了 ✓' });
     closeBtn.addClass('mod-cta');
     closeBtn.addEventListener('click', () => this.close());
@@ -92,6 +129,32 @@ export class ReminderModal extends Modal {
     }
 
     return groups;
+  }
+
+  /**
+   * 渲染待生成的周期任务区域
+   */
+  private renderPendingSection(container: HTMLElement): void {
+    if (this.pendingRecurringTasks.length === 0) {
+      return;
+    }
+
+    const sectionEl = container.createDiv({ cls: 'task-reminder-group task-reminder-pending' });
+    const titleEl = sectionEl.createDiv({ cls: 'task-reminder-group-title' });
+    titleEl.setText(`🔄 待生成 (${this.pendingRecurringTasks.length})`);
+
+    for (const task of this.pendingRecurringTasks) {
+      const itemEl = sectionEl.createDiv({ cls: 'task-reminder-item task-pending-item' });
+
+      const iconEl = itemEl.createSpan({ cls: 'task-icon' });
+      iconEl.setText('○');
+
+      const textEl = itemEl.createSpan({ cls: 'task-text task-pending-text' });
+      textEl.setText(task.name);
+
+      const typeEl = itemEl.createSpan({ cls: 'task-type-label' });
+      typeEl.setText(task.type);
+    }
   }
 
   /**

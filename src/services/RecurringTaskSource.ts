@@ -5,7 +5,7 @@
 
 import { App, moment } from 'obsidian';
 import { TaskReminderSettings } from '../settings';
-import { TaskItem, DataviewApi, SOURCE_LABELS, RecurringTaskConfig } from '../types';
+import { TaskItem, DataviewApi, SOURCE_LABELS, RecurringTaskConfig, PendingRecurringTask, RecurringTaskResult } from '../types';
 
 export class RecurringTaskSource {
   private app: App;
@@ -195,21 +195,87 @@ export class RecurringTaskSource {
   }
 
   /**
-   * 获取今日日记路径
+   * 转义正则表达式特殊字符
    */
-  private getDailyNotePath(): string {
+  private escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * 获取完整的周期任务结果（包含待生成任务）
+   * 用于 F4 功能
+   */
+  async getFullResult(dv: DataviewApi): Promise<RecurringTaskResult> {
+    const configPath = this.settings.recurringConfigPath;
+    if (!configPath) {
+      return { tasks: [], pendingTasks: [] };
+    }
+
+    const tasks: TaskItem[] = [];
+    const pendingTasks: PendingRecurringTask[] = [];
+    const todayStr = moment().format('YYYY-MM-DD');
+
+    try {
+      // 1. 解析配置表
+      const configs = await this.parseConfigFile(configPath);
+      if (configs.length === 0) {
+        return { tasks: [], pendingTasks: [] };
+      }
+
+      // 2. 筛选今日应显示的任务
+      const todayConfigs = this.filterTodayTasks(configs);
+
+      // 3. 检查日记中的完成状态
+      const dailyStatus = await this.checkDailyNoteStatus(todayConfigs);
+
+      // 4. 分类：已存在未完成 / 待生成
+      for (const config of todayConfigs) {
+        const status = dailyStatus.get(config.name);
+
+        // 已完成，跳过
+        if (status?.isCompleted) {
+          continue;
+        }
+
+        // 已存在但未完成 → 加入任务列表
+        if (status?.existsInDaily) {
+          tasks.push({
+            id: `recurring:${config.name}`,
+            source: 'recurring',
+            sourceLabel: SOURCE_LABELS.recurring,
+            text: config.name,
+            fullText: `🔄 ${config.name}`,
+            isMeeting: false,
+            filePath: this.getDailyNotePath(),
+            line: undefined,
+            dueDate: todayStr
+          });
+        } else {
+          // 不存在 → 待生成
+          pendingTasks.push({
+            name: config.name,
+            type: config.type,
+            trigger: config.trigger
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[TaskReminder] Error querying recurring tasks:', e);
+      throw e;
+    }
+
+    return { tasks, pendingTasks };
+  }
+
+  /**
+   * 获取今日日记路径（公开方法，供写入服务使用）
+   */
+  getDailyNotePath(): string {
     const dailyPath = this.settings.dailyNotePath;
     const year = moment().format('YYYY');
     const month = moment().month() + 1;
     const dateStr = moment().format('YYYY-MM-DD');
 
     return `${dailyPath}/${year}/${this.monthNames[month]}/${dateStr}.md`;
-  }
-
-  /**
-   * 转义正则表达式特殊字符
-   */
-  private escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 }

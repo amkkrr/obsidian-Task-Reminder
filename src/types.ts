@@ -89,6 +89,24 @@ export interface RecurringTaskStatus {
   isCompleted: boolean;
 }
 
+/** 待生成的周期任务 */
+export interface PendingRecurringTask {
+  /** 任务名称 */
+  name: string;
+  /** 类型 */
+  type: RecurringType;
+  /** 触发条件 */
+  trigger: string;
+}
+
+/** 周期任务数据结果（扩展版） */
+export interface RecurringTaskResult {
+  /** 已在日记中的未完成任务 */
+  tasks: TaskItem[];
+  /** 待生成的任务（未写入日记） */
+  pendingTasks: PendingRecurringTask[];
+}
+
 /** Dataview API 类型（简化版） */
 export interface DataviewApi {
   pages: (source?: string) => DataviewPages;
