@@ -1,9 +1,10 @@
 # Task Reminder Plugin 规格书
 
-> **版本**: 1.3.0
+> **版本**: 1.1.0
 > **创建日期**: 2026-02-03
 > **最后更新**: 2026-02-03
-> **状态**: ✅ 已发布 - v1.2.0 可用
+> **状态**: ✅ 已发布
+> **对应代码版本**: manifest.json v1.1.0 | commit: ddc04a9
 
 ---
 
@@ -12,10 +13,7 @@
 | 版本 | 日期 | 变更说明 |
 |------|------|----------|
 | 1.0.0-draft | 2026-02-03 | 初始草案 |
-| 1.1.0 | 2026-02-03 | 根据审计报告修订：移除 eval、补充数据合同、明确 Dataview 依赖、修复存储策略等 |
-| 1.2.0 | 2026-02-03 | 完成插件脚手架搭建：M1-M4 里程碑已实现，添加路径自动补全功能 |
-| 1.2.1 | 2026-02-03 | 增加移动端支持，插件测试通过并正式发布 |
-| 1.3.0 | 2026-02-03 | 整合周期任务管理器：支持在弹窗中生成周期任务到 Daily Note |
+| 1.1.0 | 2026-02-03 | 正式发布版本：M1-M4 里程碑已实现，支持移动端，路径自动补全 |
 
 ---
 
@@ -79,7 +77,9 @@
 - **刷新策略**: 启动时 + 每 5 分钟 + 文件变更后 debounce（500ms）
 - 仅桌面端显示
 
-#### F4: 周期任务生成（v1.3.0 新增）
+#### F4: 周期任务生成（🔲 规划中 - v1.2.0）
+
+> ⚠️ **注意**: 此功能尚未实现，属于规划功能。实现后将修改 Daily Note 文件，届时需更新 §6.3 安全合规声明。
 
 - **触发方式**: 弹窗底部「生成到 Daily Note」按钮
 - **显示条件**: 存在待生成的周期任务（未写入 Daily Note）
@@ -182,20 +182,20 @@ dv.pages('"nikePath"')
     const pathParts = p.file.folder.split('/');
     return pathParts.some(part => part.toLowerCase() === 'events');
   })
-  .where(p => "Done" in p.file.frontmatter && p.Done !== true)
+  .where(p => p.Done !== true)  // Done 不存在或不为 true
 ```
 
 **Frontmatter 要求**:
 ```yaml
 ---
 Due Date: 2026-02-03
-Done: false  # 或不存在
+Done: false  # 可选字段：不存在、false、或任何非 true 值均视为未完成
 ---
 ```
 
 **筛选条件**:
 - 文件夹路径包含 `events`
-- Frontmatter 有 `Done` 字段且值不为 `true`
+- `Done` 字段不为 `true`（不存在、false、其他值均视为未完成）
 - `Due Date` ≤ 今天
 
 **输出字段**:
@@ -285,6 +285,15 @@ if (type === "monthly") {
 - [ ] 🔄 晨间日记
 - [x] 🔄 已完成的周期任务
 ```
+
+**去重规则（SSOT: Daily Note 为准）**:
+1. 周期任务配置文件定义「应显示」的任务
+2. Daily Note 中的 `🔄` 前缀任务为「已生成」任务
+3. 弹窗显示逻辑：
+   - 已生成且未完成 → 显示在任务列表，标记来源 `🔄 周期`
+   - 已生成且已完成 → 不显示
+   - 未生成（仅在配置中） → 显示在「待生成」区域（F4 功能）
+4. 任务计数：仅统计 Daily Note 中未完成的周期任务
 
 **输出字段**:
 | 字段 | 类型 | 说明 |
@@ -651,16 +660,16 @@ export class ReminderModal extends Modal {
 
 ## 5. 错误处理矩阵
 
-| 错误场景 | 用户提示 | 是否禁用来源 | 是否重试 | 日志级别 |
-|---------|---------|-------------|---------|---------|
-| Dataview 未安装/未启用 | Notice + 设置页警告 | 全部禁用 | 否 | warn |
-| Daily Note 路径未配置 | 设置页提示 | 禁用 daily | 否 | info |
-| Daily Note 路径不存在 | Notice（可关闭） | 禁用 daily | 否 | warn |
-| Nike 路径未配置 | 设置页提示 | 禁用 nike | 否 | info |
-| 周期任务配置文件不存在 | Notice（可关闭） | 禁用 recurring | 否 | warn |
-| 周期任务配置格式错误 | Notice + 具体行号 | 禁用 recurring | 否 | error |
-| Dataview 查询超时（>5s） | Notice | 临时禁用 | 下次刷新 | error |
-| 文件读取失败 | 静默跳过 | 跳过该文件 | 否 | debug |
+| 错误场景 | 触发条件 | 用户提示 | 是否禁用来源 | 提示频率 | 验收标准 |
+|---------|---------|---------|-------------|---------|----------|
+| Dataview 未安装/未启用 | `app.plugins.plugins.dataview?.api` 为 falsy | Notice + 设置页警告 | 全部禁用 | 每次触发时 | 状态栏显示 `📋 ?` |
+| Daily Note 路径未配置 | `settings.dailyNotePath === ""` | 设置页提示 | 禁用 daily | 仅设置页 | 设置项旁显示警告图标 |
+| Daily Note 路径不存在 | `vault.getAbstractFileByPath()` 返回 null | Notice（5s 自动关闭） | 禁用 daily | 每日首次 | Notice 包含路径信息 |
+| Nike 路径未配置 | `settings.nikePath === ""` | 设置页提示 | 禁用 nike | 仅设置页 | 设置项旁显示警告图标 |
+| 周期任务配置文件不存在 | `vault.getAbstractFileByPath()` 返回 null | Notice（5s 自动关闭） | 禁用 recurring | 每日首次 | Notice 包含路径信息 |
+| 周期任务配置格式错误 | 表格解析失败或必填字段缺失 | Notice + 具体行号 | 禁用 recurring | 每次触发时 | Notice 显示错误行号 |
+| Dataview 查询超时（>5s） | Promise 超过 5000ms 未 resolve | Notice | 临时禁用 | 每次超时 | 下次刷新自动重试 |
+| 文件读取失败 | `vault.read()` 抛出异常 | 静默跳过 | 跳过该文件 | 不提示 | console.debug 记录 |
 
 ```typescript
 // 错误处理示例
@@ -713,7 +722,7 @@ this.registerInterval(
 - ✅ **不使用 eval**：所有数据源逻辑编译进插件
 - ✅ **不执行外部代码**：不加载用户 vault 中的 JS 文件
 - ✅ **不发送网络请求**：纯本地操作
-- ✅ **只读操作**：不修改用户笔记内容
+- ✅ **只读操作**：当前版本不修改用户笔记内容（F4 功能实现后将支持写入 Daily Note）
 
 ---
 
@@ -843,7 +852,7 @@ this.registerInterval(
 | P1-8 | Notice+Modal UX | ✅ 增加 reminderStyle 设置 |
 | P2-9 | 硬编码路径 | ✅ 默认为空，需用户配置 |
 | P2-10 | 错误处理缺失 | ✅ 新增第 5 节错误矩阵 |
-| P2-11 | 移动端不明确 | ✅ 明确 isDesktopOnly: true |
+| P2-11 | 移动端不明确 | ✅ 明确 isDesktopOnly: false，状态栏仅桌面端 |
 
 ---
 
