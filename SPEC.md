@@ -1,10 +1,10 @@
 # Task Reminder Plugin 规格书
 
-> **文档版本**: 2026-02-03-d
+> **文档版本**: 2026-02-04-a
 > **创建日期**: 2026-02-03
-> **最后更新**: 2026-02-03
+> **最后更新**: 2026-02-04
 > **代码版本**: v1.2.0（manifest.json）
-> **状态**: ✅ v1.2.0 已实现 | 🔲 待测试发布
+> **状态**: ✅ v1.2.0 已实现 | 🔲 F5/F6 待实现
 
 ---
 
@@ -16,6 +16,7 @@
 | 2026-02-03-b | 2026-02-03 | M1-M4 实现，移动端支持，正式发布 | v1.1.0 ✅ |
 | 2026-02-03-c | 2026-02-03 | 规划 F4 周期任务生成功能 | v1.2.0 🔲 |
 | 2026-02-03-d | 2026-02-03 | 实现 F4 周期任务生成功能 | v1.2.0 ✅ |
+| 2026-02-04-a | 2026-02-04 | 规划 F5 快速添加 Todo + F6 移动任务日期 | v1.3.0 🔲 |
 
 ---
 
@@ -93,6 +94,85 @@
 - **任务格式**: `- [ ] 🔄 任务名称`
 - **Daily Note 自动创建**: 若文件不存在，自动创建（含基础 frontmatter）
 
+#### F5: 快速添加 Todo（🔲 待实现 - v1.3.0）
+
+> 通过命令或按钮快速创建任务，选择目标日期后写入对应 Daily Note。
+
+- **触发方式**:
+  1. 命令面板: `Quick add todo`
+  2. 侧边栏 Ribbon 按钮: ➕ 图标
+- **交互流程**:
+  1. 弹出 `QuickAddModal`，包含任务输入框
+  2. 输入任务内容后，点击「选择日期」或按 Enter
+  3. 弹出 `DatePickerModal`（共享组件），选择目标日期
+  4. 确认后写入对应日期的 Daily Note
+- **任务格式**: `- [ ] 任务内容`
+- **特性**:
+  - 支持连续添加（添加后不关闭弹窗，可继续添加）
+  - 支持快捷键 `Ctrl/Cmd + Enter` 快速添加到今天
+  - 空内容时禁用提交按钮
+- **Daily Note 自动创建**: 若目标日期文件不存在，自动创建
+
+#### F6: 移动任务日期（🔲 待实现 - v1.3.0）
+
+> 将任务从当前 Daily Note 移动到其他日期的 Daily Note。
+
+- **触发方式**:
+  1. 在 ReminderModal 任务列表中，右键菜单「移动到...」
+  2. 在 ReminderModal 任务项上，点击 📅 图标按钮
+- **适用范围**: 仅限 Daily Note 来源的任务（`source: 'daily'`）
+- **交互流程**:
+  1. 点击移动按钮/菜单
+  2. 弹出 `DatePickerModal`（共享组件）
+  3. 选择目标日期
+  4. 从原文件删除任务行，追加到目标文件
+- **移动逻辑**:
+  1. 读取原文件，定位任务行（通过 `line` 属性）
+  2. 删除原任务行（保留空行处理）
+  3. 读取/创建目标日期 Daily Note
+  4. 追加任务到目标文件末尾
+- **安全机制**:
+  - 移动前确认对话框（可在设置中关闭）
+  - 移动失败时回滚（不删除原任务）
+- **限制**:
+  - Nike/Holiday/Recurring 来源任务不支持移动（显示提示）
+  - 不能移动到过去日期（可配置）
+
+#### 共享组件: DatePickerModal
+
+> F5 和 F6 共用的日期选择弹窗。
+
+- **快捷选项**（按钮形式）:
+  | 选项 | 计算逻辑 |
+  |------|---------|
+  | 今天 | `moment()` |
+  | 明天 | `moment().add(1, 'day')` |
+  | 后天 | `moment().add(2, 'days')` |
+  | 下周一 | `moment().day(8)` (下周一) |
+  | 下周末 | `moment().day(13)` (下周六) |
+
+- **日历选择器**:
+  - 显示当前月份日历网格
+  - 可切换上/下月
+  - 今天高亮显示
+  - 已选日期标记
+  - 过去日期灰显（可配置是否可选）
+
+- **输入框**:
+  - 支持直接输入日期（YYYY-MM-DD 格式）
+  - 支持相对日期（如 `+3` 表示 3 天后）
+
+- **回调接口**:
+  ```typescript
+  interface DatePickerOptions {
+    initialDate?: moment.Moment;      // 初始选中日期
+    allowPastDates?: boolean;         // 是否允许选择过去日期
+    title?: string;                   // 弹窗标题
+    onSelect: (date: moment.Moment) => void;  // 选择回调
+    onCancel?: () => void;            // 取消回调
+  }
+  ```
+
 ### 2.2 配置项
 
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -109,6 +189,8 @@
 | `dailyNotePath` | string | `""` | Daily Note 文件夹路径（需用户配置） |
 | `nikePath` | string | `""` | Nike 日历文件夹路径（需用户配置） |
 | `recurringConfigPath` | string | `""` | 周期任务配置文件路径（需用户配置） |
+| `confirmBeforeMove` | boolean | `true` | 移动任务前显示确认对话框 |
+| `allowMoveToPast` | boolean | `false` | 是否允许移动任务到过去日期 |
 
 ### 2.3 "已弹过"状态存储
 
@@ -331,10 +413,14 @@ task-reminder/
 │   │   ├── DailyTaskSource.ts  # Daily Note 数据源
 │   │   ├── NikeTaskSource.ts   # Nike 项目数据源
 │   │   ├── HolidayTaskSource.ts # Holiday 数据源
-│   │   └── RecurringTaskSource.ts # 周期任务数据源
+│   │   ├── RecurringTaskSource.ts # 周期任务数据源
+│   │   ├── DailyNoteService.ts # Daily Note 读写服务
+│   │   └── TaskMoveService.ts  # 任务移动服务（F6）
 │   ├── ui/
 │   │   ├── ReminderModal.ts    # 提醒弹窗
-│   │   └── StatusBarItem.ts    # 状态栏组件
+│   │   ├── StatusBarItem.ts    # 状态栏组件
+│   │   ├── QuickAddModal.ts    # 快速添加弹窗（F5）
+│   │   └── DatePickerModal.ts  # 日期选择弹窗（共享）
 │   └── types.ts                # 类型定义
 ├── styles.css                  # 样式文件
 ├── manifest.json               # 插件清单
@@ -429,6 +515,323 @@ export interface TaskSourceError {
   source: string;
   message: string;
   recoverable: boolean;
+}
+
+/** F5/F6 新增类型 */
+export interface QuickAddResult {
+  content: string;        // 任务内容
+  targetDate: moment.Moment;  // 目标日期
+}
+
+export interface TaskMoveResult {
+  success: boolean;
+  fromPath: string;       // 原文件路径
+  toPath: string;         // 目标文件路径
+  taskText: string;       // 任务文本
+}
+
+export interface DatePickerOptions {
+  initialDate?: moment.Moment;      // 初始选中日期，默认今天
+  allowPastDates?: boolean;         // 是否允许选择过去日期，默认 false
+  title?: string;                   // 弹窗标题
+  onSelect: (date: moment.Moment) => void;  // 选择回调
+  onCancel?: () => void;            // 取消回调
+}
+```
+
+#### 4.4.3 QuickAddModal（F5）
+
+```typescript
+// src/ui/QuickAddModal.ts
+import { App, Modal, Notice, moment } from 'obsidian';
+import { DatePickerModal } from './DatePickerModal';
+import { DailyNoteService } from '../services/DailyNoteService';
+
+export class QuickAddModal extends Modal {
+  private dailyNoteService: DailyNoteService;
+  private inputEl: HTMLInputElement;
+
+  constructor(app: App, dailyNoteService: DailyNoteService) {
+    super(app);
+    this.dailyNoteService = dailyNoteService;
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText('➕ 快速添加 Todo');
+
+    // 输入框
+    const inputContainer = contentEl.createDiv({ cls: 'quick-add-input-container' });
+    this.inputEl = inputContainer.createEl('input', {
+      type: 'text',
+      placeholder: '输入任务内容...',
+      cls: 'quick-add-input'
+    });
+    this.inputEl.focus();
+
+    // 快捷键支持
+    this.inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl/Cmd + Enter: 添加到今天
+          this.addToDate(moment());
+        } else {
+          // Enter: 打开日期选择
+          this.openDatePicker();
+        }
+      }
+    });
+
+    // 按钮区域
+    const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+
+    const todayBtn = btnContainer.createEl('button', { text: '📅 今天' });
+    todayBtn.addEventListener('click', () => this.addToDate(moment()));
+
+    const pickDateBtn = btnContainer.createEl('button', { text: '🗓️ 选择日期...' });
+    pickDateBtn.addClass('mod-cta');
+    pickDateBtn.addEventListener('click', () => this.openDatePicker());
+  }
+
+  private openDatePicker() {
+    const content = this.inputEl.value.trim();
+    if (!content) {
+      new Notice('请输入任务内容');
+      return;
+    }
+
+    new DatePickerModal(this.app, {
+      title: '选择目标日期',
+      onSelect: (date) => this.addToDate(date),
+    }).open();
+  }
+
+  private async addToDate(date: moment.Moment) {
+    const content = this.inputEl.value.trim();
+    if (!content) {
+      new Notice('请输入任务内容');
+      return;
+    }
+
+    try {
+      await this.dailyNoteService.writeTask(content, date);
+      new Notice(`✅ 已添加到 ${date.format('YYYY-MM-DD')}`);
+      this.inputEl.value = '';  // 清空输入，支持连续添加
+      this.inputEl.focus();
+    } catch (e) {
+      new Notice(`❌ 添加失败: ${(e as Error).message}`);
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+```
+
+#### 4.4.4 DatePickerModal（共享组件）
+
+```typescript
+// src/ui/DatePickerModal.ts
+import { App, Modal, moment } from 'obsidian';
+import { DatePickerOptions } from '../types';
+
+export class DatePickerModal extends Modal {
+  private options: DatePickerOptions;
+  private selectedDate: moment.Moment;
+  private currentMonth: moment.Moment;
+
+  constructor(app: App, options: DatePickerOptions) {
+    super(app);
+    this.options = options;
+    this.selectedDate = options.initialDate || moment();
+    this.currentMonth = moment(this.selectedDate);
+  }
+
+  onOpen() {
+    const { contentEl, titleEl } = this;
+    titleEl.setText(this.options.title || '选择日期');
+
+    // 快捷选项
+    const quickOptions = contentEl.createDiv({ cls: 'date-picker-quick-options' });
+    const shortcuts = [
+      { label: '今天', date: moment() },
+      { label: '明天', date: moment().add(1, 'day') },
+      { label: '后天', date: moment().add(2, 'days') },
+      { label: '下周一', date: moment().day(8) },
+      { label: '下周六', date: moment().day(13) },
+    ];
+
+    for (const shortcut of shortcuts) {
+      const btn = quickOptions.createEl('button', { text: shortcut.label });
+      btn.addEventListener('click', () => this.selectDate(shortcut.date));
+    }
+
+    // 日历网格
+    const calendarContainer = contentEl.createDiv({ cls: 'date-picker-calendar' });
+    this.renderCalendar(calendarContainer);
+
+    // 输入框（相对日期）
+    const inputContainer = contentEl.createDiv({ cls: 'date-picker-input' });
+    const input = inputContainer.createEl('input', {
+      type: 'text',
+      placeholder: '+3 或 2026-02-10'
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const parsed = this.parseInput(input.value);
+        if (parsed) this.selectDate(parsed);
+      }
+    });
+
+    // 取消按钮
+    const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+    const cancelBtn = btnContainer.createEl('button', { text: '取消' });
+    cancelBtn.addEventListener('click', () => {
+      this.options.onCancel?.();
+      this.close();
+    });
+  }
+
+  private renderCalendar(container: HTMLElement) {
+    container.empty();
+
+    // 月份导航
+    const nav = container.createDiv({ cls: 'calendar-nav' });
+    const prevBtn = nav.createEl('button', { text: '◀' });
+    prevBtn.addEventListener('click', () => {
+      this.currentMonth.subtract(1, 'month');
+      this.renderCalendar(container);
+    });
+
+    const monthLabel = nav.createSpan({ cls: 'calendar-month-label' });
+    monthLabel.setText(this.currentMonth.format('YYYY年 M月'));
+
+    const nextBtn = nav.createEl('button', { text: '▶' });
+    nextBtn.addEventListener('click', () => {
+      this.currentMonth.add(1, 'month');
+      this.renderCalendar(container);
+    });
+
+    // 星期标题
+    const weekHeader = container.createDiv({ cls: 'calendar-week-header' });
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(d => {
+      weekHeader.createSpan({ text: d });
+    });
+
+    // 日期网格
+    const grid = container.createDiv({ cls: 'calendar-grid' });
+    const startOfMonth = moment(this.currentMonth).startOf('month');
+    const endOfMonth = moment(this.currentMonth).endOf('month');
+    const startDay = startOfMonth.isoWeekday();  // 1=周一, 7=周日
+
+    // 填充前置空白
+    for (let i = 1; i < startDay; i++) {
+      grid.createDiv({ cls: 'calendar-day empty' });
+    }
+
+    // 日期
+    const today = moment().format('YYYY-MM-DD');
+    for (let d = 1; d <= endOfMonth.date(); d++) {
+      const date = moment(this.currentMonth).date(d);
+      const dateStr = date.format('YYYY-MM-DD');
+      const dayEl = grid.createDiv({ cls: 'calendar-day', text: String(d) });
+
+      if (dateStr === today) dayEl.addClass('is-today');
+      if (dateStr === this.selectedDate.format('YYYY-MM-DD')) dayEl.addClass('is-selected');
+      if (dateStr < today && !this.options.allowPastDates) {
+        dayEl.addClass('is-past');
+      } else {
+        dayEl.addEventListener('click', () => this.selectDate(date));
+      }
+    }
+  }
+
+  private parseInput(value: string): moment.Moment | null {
+    value = value.trim();
+    if (value.startsWith('+')) {
+      const days = parseInt(value.slice(1), 10);
+      if (!isNaN(days)) return moment().add(days, 'days');
+    }
+    const parsed = moment(value, 'YYYY-MM-DD', true);
+    if (parsed.isValid()) return parsed;
+    return null;
+  }
+
+  private selectDate(date: moment.Moment) {
+    this.options.onSelect(date);
+    this.close();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+```
+
+#### 4.4.5 TaskMoveService（F6）
+
+```typescript
+// src/services/TaskMoveService.ts
+import { App, TFile, moment } from 'obsidian';
+import { TaskItem, TaskMoveResult } from '../types';
+import { DailyNoteService } from './DailyNoteService';
+
+export class TaskMoveService {
+  private app: App;
+  private dailyNoteService: DailyNoteService;
+
+  constructor(app: App, dailyNoteService: DailyNoteService) {
+    this.app = app;
+    this.dailyNoteService = dailyNoteService;
+  }
+
+  /**
+   * 移动任务到目标日期
+   * @param task 要移动的任务
+   * @param targetDate 目标日期
+   */
+  async moveTask(task: TaskItem, targetDate: moment.Moment): Promise<TaskMoveResult> {
+    // 验证：仅支持 daily 来源
+    if (task.source !== 'daily') {
+      throw new Error('仅支持移动 Daily Note 中的任务');
+    }
+
+    if (task.line === undefined) {
+      throw new Error('任务行号信息缺失');
+    }
+
+    const fromPath = task.filePath;
+    const toPath = this.dailyNoteService.getDailyNotePathForDate(targetDate);
+
+    // 1. 读取原文件
+    const fromFile = this.app.vault.getAbstractFileByPath(fromPath);
+    if (!(fromFile instanceof TFile)) {
+      throw new Error(`原文件不存在: ${fromPath}`);
+    }
+    const fromContent = await this.app.vault.read(fromFile);
+    const lines = fromContent.split('\n');
+
+    // 2. 获取任务行
+    if (task.line >= lines.length) {
+      throw new Error('任务行号超出文件范围');
+    }
+    const taskLine = lines[task.line];
+
+    // 3. 写入目标文件（先写入，确保成功后再删除）
+    await this.dailyNoteService.writeTaskLine(taskLine, targetDate);
+
+    // 4. 从原文件删除任务行
+    lines.splice(task.line, 1);
+    await this.app.vault.modify(fromFile, lines.join('\n'));
+
+    return {
+      success: true,
+      fromPath,
+      toPath,
+      taskText: task.fullText
+    };
+  }
 }
 ```
 
@@ -743,7 +1146,27 @@ this.registerInterval(
 | 点击任务跳转 | 打开文件并定位 | 滚动到任务行 |
 | Dataview 未安装 | 显示警告，功能禁用 | Notice + 设置页提示 |
 
-### 7.2 多 Vault 测试
+### 7.2 F5/F6 功能测试
+
+| 测试项 | 预期结果 | 验收标准 |
+|--------|----------|----------|
+| F5: 命令触发 | 打开 QuickAddModal | 输入框自动获得焦点 |
+| F5: Ribbon 按钮 | 打开 QuickAddModal | 按钮显示 ➕ 图标 |
+| F5: 空内容提交 | 显示提示，不关闭弹窗 | Notice "请输入任务内容" |
+| F5: Ctrl+Enter | 添加到今天 | 任务写入今日 Daily Note |
+| F5: 选择日期添加 | 添加到指定日期 | 任务写入目标日期 Daily Note |
+| F5: 连续添加 | 添加后清空输入框 | 弹窗保持打开 |
+| F5: 目标文件不存在 | 自动创建 Daily Note | 含基础 frontmatter |
+| F6: Daily 任务移动 | 显示 📅 按钮 | 点击打开 DatePicker |
+| F6: 非 Daily 任务 | 不显示移动按钮 | Nike/Holiday/Recurring 无移动选项 |
+| F6: 移动到明天 | 从原文件删除，追加到目标 | 两个文件内容正确 |
+| F6: 移动失败回滚 | 原任务保留 | 目标写入失败时不删除原任务 |
+| DatePicker: 快捷选项 | 点击立即选中 | 今天/明天/后天/下周一/下周六 |
+| DatePicker: 日历选择 | 点击日期选中 | 过去日期灰显（默认） |
+| DatePicker: 相对输入 | +3 解析为 3 天后 | 支持 +N 格式 |
+| DatePicker: 直接输入 | YYYY-MM-DD 格式解析 | 无效格式无响应 |
+
+### 7.3 多 Vault 测试
 
 | 测试项 | 预期结果 |
 |--------|----------|
@@ -777,8 +1200,9 @@ this.registerInterval(
 | M2 | 设置面板 + 命令注册 | Week 2 | ✅ 完成 |
 | M3 | 数据服务实现（4 个数据源） | Week 3 | ✅ 完成 |
 | M4 | 错误处理 + 点击跳转 | Week 4 | ✅ 完成 |
-| M5 | 测试 + 文档 | Week 5 | 🔲 待开始 |
-| M6 | 提交社区插件仓库 | Week 6 | 🔲 待开始 |
+| M5 | F5 快速添加 + F6 移动任务 + DatePicker | Week 5 | 🔲 待开始 |
+| M6 | 测试 + 文档 | Week 6 | 🔲 待开始 |
+| M7 | 提交社区插件仓库 | Week 7 | 🔲 待开始 |
 
 ### 8.2 提交清单
 
