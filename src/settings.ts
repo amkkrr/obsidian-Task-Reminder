@@ -39,6 +39,10 @@ export interface TaskReminderSettings {
   recurringConfigPath: string;
   /** 上次提醒日期（用于防重复） */
   lastReminderDate: string;
+  /** F6: 移动任务前显示确认对话框 */
+  confirmBeforeMove: boolean;
+  /** F6: 是否允许移动任务到过去日期 */
+  allowMoveToPast: boolean;
 }
 
 /** 默认设置 */
@@ -57,7 +61,9 @@ export const DEFAULT_SETTINGS: TaskReminderSettings = {
   dailyNotePath: '',
   nikePath: '',
   recurringConfigPath: '',
-  lastReminderDate: ''
+  lastReminderDate: '',
+  confirmBeforeMove: true,
+  allowMoveToPast: false
 };
 
 /**
@@ -317,6 +323,29 @@ export class TaskReminderSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.taskSources.holiday)
         .onChange(async (value) => {
           this.plugin.settings.taskSources.holiday = value;
+          await this.plugin.saveSettings();
+        }));
+
+    // 任务移动设置 (F6)
+    containerEl.createEl('h2', { text: '任务移动设置' });
+
+    new Setting(containerEl)
+      .setName('移动前确认')
+      .setDesc('移动任务到其他日期前显示确认对话框')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.confirmBeforeMove)
+        .onChange(async (value) => {
+          this.plugin.settings.confirmBeforeMove = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('允许移动到过去')
+      .setDesc('允许将任务移动到过去的日期')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.allowMoveToPast)
+        .onChange(async (value) => {
+          this.plugin.settings.allowMoveToPast = value;
           await this.plugin.saveSettings();
         }));
   }

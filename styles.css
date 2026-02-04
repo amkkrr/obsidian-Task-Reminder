@@ -105,7 +105,247 @@
 .modal-button-container {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--background-modifier-border);
+}
+
+/* ============================================
+   DatePickerModal 样式 (F5/F6 共享组件)
+   ============================================ */
+
+.date-picker-modal .modal-content {
+  max-width: 360px;
+}
+
+.date-picker-quick-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.date-picker-shortcut-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  background-color: var(--background-modifier-hover);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.date-picker-shortcut-btn:hover {
+  background-color: var(--interactive-hover);
+}
+
+/* 日历导航 */
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.calendar-nav-btn {
+  min-width: 44px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.calendar-nav-btn:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.calendar-month-label {
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+/* 星期标题 */
+.calendar-week-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.calendar-week-day {
+  padding: 4px;
+}
+
+/* 日历网格 */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.calendar-day:not(.empty):not(.is-past):hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.calendar-day.empty {
+  cursor: default;
+}
+
+.calendar-day.is-today {
+  border: 2px solid var(--interactive-accent);
+  font-weight: 600;
+}
+
+.calendar-day.is-selected {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.calendar-day.is-past {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 日期输入框 */
+.date-picker-input {
+  margin-top: 16px;
+}
+
+.date-picker-input label {
+  display: block;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.date-picker-text-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background-color: var(--background-primary);
+}
+
+.date-picker-text-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+/* ============================================
+   QuickAddModal 样式 (F5)
+   ============================================ */
+
+.quick-add-modal .modal-content {
+  max-width: 400px;
+}
+
+.quick-add-input-container {
+  margin-bottom: 12px;
+}
+
+.quick-add-input {
+  width: 100%;
+  padding: 12px;
+  font-size: 1.1em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-primary);
+}
+
+.quick-add-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.quick-add-hint {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+/* ============================================
+   ReminderModal 移动按钮样式 (F6)
+   ============================================ */
+
+.task-reminder-move-btn {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.task-reminder-move-btn:hover {
+  opacity: 1;
+  background-color: var(--background-modifier-hover);
+}
+
+/* 移动端增大点击区域 */
+@media (max-width: 768px) {
+  .task-reminder-move-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ============================================
+   移动端安全区适配
+   ============================================ */
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .modal-button-container {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ============================================
+   待生成区域样式
+   ============================================ */
+
+.task-reminder-pending {
+  border-left: 3px solid var(--text-muted);
+  padding-left: 12px;
+}
+
+.task-pending-item {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.task-pending-text {
+  color: var(--text-muted);
+}
+
+.task-type-label {
+  font-size: 0.75em;
+  padding: 2px 6px;
+  background-color: var(--background-modifier-hover);
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
 }

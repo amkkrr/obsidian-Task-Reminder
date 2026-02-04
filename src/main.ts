@@ -1,20 +1,26 @@
 /**
  * Task Reminder Plugin - 主入口
  * 根据 SPEC.md §4.5 定义
+ * F5: 快速添加 Todo
+ * F6: 移动任务日期
  */
 
 import { Plugin, Notice, Platform, moment } from 'obsidian';
 import { TaskReminderSettings, DEFAULT_SETTINGS, TaskReminderSettingTab } from './settings';
 import { TaskDataService } from './services/TaskDataService';
 import { DailyNoteService } from './services/DailyNoteService';
+import { TaskMoveService } from './services/TaskMoveService';
 import { ReminderModal } from './ui/ReminderModal';
+import { QuickAddModal } from './ui/QuickAddModal';
+import { DatePickerModal } from './ui/DatePickerModal';
 import { StatusBarItem } from './ui/StatusBarItem';
-import { PendingRecurringTask } from './types';
+import { PendingRecurringTask, TaskItem } from './types';
 
 export default class TaskReminderPlugin extends Plugin {
   settings: TaskReminderSettings;
   private dataService: TaskDataService;
   private dailyNoteService: DailyNoteService;
+  private taskMoveService: TaskMoveService;
   private statusBarItem: StatusBarItem | null = null;
   private statusBarEl: HTMLElement | null = null;
   private refreshDebounceTimer: number | null = null;
@@ -32,6 +38,9 @@ export default class TaskReminderPlugin extends Plugin {
     // 初始化日记写入服务（F4 功能）
     this.dailyNoteService = new DailyNoteService(this.app, this.settings);
 
+    // 初始化任务移动服务（F6 功能）
+    this.taskMoveService = new TaskMoveService(this.app, this.dailyNoteService, this.settings);
+
     // 注册设置面板
     this.addSettingTab(new TaskReminderSettingTab(this.app, this));
 
@@ -40,6 +49,18 @@ export default class TaskReminderPlugin extends Plugin {
       id: 'show-task-reminder',
       name: 'Show today\'s task reminder',
       callback: () => this.showReminder(true) // force = true, 不写入已弹过标记
+    });
+
+    // F5: 注册快速添加命令
+    this.addCommand({
+      id: 'quick-add-todo',
+      name: 'Quick add todo',
+      callback: () => this.openQuickAdd()
+    });
+
+    // F5: 注册 Ribbon 按钮
+    this.addRibbonIcon('plus-circle', 'Quick add todo', () => {
+      this.openQuickAdd();
     });
 
     // 状态栏（仅桌面端）
@@ -177,7 +198,8 @@ export default class TaskReminderPlugin extends Plugin {
           this.app,
           result.tasks,
           pendingRecurringTasks,
-          (tasks) => this.generateRecurringTasks(tasks)
+          (tasks) => this.generateRecurringTasks(tasks),
+          (task) => this.handleMoveTask(task)  // F6: 移动任务回调
         ).open();
       }
     } else {
@@ -198,6 +220,50 @@ export default class TaskReminderPlugin extends Plugin {
     this.dataService.invalidateCache();
     await this.updateStatusBar();
     return count;
+  }
+
+  /**
+   * F5: 打开快速添加弹窗
+   */
+  private openQuickAdd(): void {
+    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+      new Notice('请先在设置中配置 Daily Note 路径');
+      return;
+    }
+    new QuickAddModal(this.app, this.dailyNoteService, this.settings.allowMoveToPast).open();
+  }
+
+  /**
+   * F6: 处理任务移动
+   */
+  private handleMoveTask(task: TaskItem): void {
+    // 检查任务是否可移动
+    const checkResult = this.taskMoveService.canMoveTask(task);
+    if (!checkResult.canMove) {
+      new Notice(`❌ ${checkResult.reason}`);
+      return;
+    }
+
+    new DatePickerModal(this.app, {
+      title: '移动任务到',
+      allowPastDates: this.settings.allowMoveToPast,
+      onSelect: async (date) => {
+        try {
+          const result = await this.taskMoveService.moveTask(task, date);
+          if (result.success) {
+            new Notice(`✅ 已移动到 ${date.format('YYYY-MM-DD')}`);
+            // 刷新缓存和状态栏
+            this.dataService.invalidateCache();
+            await this.updateStatusBar();
+          }
+          if (result.error) {
+            new Notice(`⚠️ ${result.error}`, 8000);
+          }
+        } catch (e) {
+          new Notice(`❌ 移动失败: ${(e as Error).message}`);
+        }
+      }
+    }).open();
   }
 
   /**
@@ -231,6 +297,10 @@ export default class TaskReminderPlugin extends Plugin {
     // 更新日记服务的设置引用（F4 功能）
     if (this.dailyNoteService) {
       this.dailyNoteService.updateSettings(this.settings);
+    }
+    // 更新移动服务的设置引用（F6 功能）
+    if (this.taskMoveService) {
+      this.taskMoveService.updateSettings(this.settings);
     }
   }
 

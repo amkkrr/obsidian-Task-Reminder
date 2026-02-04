@@ -1,29 +1,36 @@
 /**
  * Reminder Modal - 任务提醒弹窗
  * 根据 SPEC.md §4.6 定义
+ * F6: 添加移动按钮和菜单支持
  */
 
-import { App, Modal, TFile, Notice, moment } from 'obsidian';
+import { App, Modal, TFile, Notice, Menu, Platform, moment } from 'obsidian';
 import { TaskItem, PendingRecurringTask } from '../types';
 
 /** 生成回调类型 */
 export type GenerateCallback = (tasks: PendingRecurringTask[]) => Promise<number>;
 
+/** 移动任务回调类型 */
+export type MoveTaskCallback = (task: TaskItem) => void;
+
 export class ReminderModal extends Modal {
   private tasks: TaskItem[];
   private pendingRecurringTasks: PendingRecurringTask[];
   private onGenerate?: GenerateCallback;
+  private onMoveTask?: MoveTaskCallback;
 
   constructor(
     app: App,
     tasks: TaskItem[],
     pendingRecurringTasks: PendingRecurringTask[] = [],
-    onGenerate?: GenerateCallback
+    onGenerate?: GenerateCallback,
+    onMoveTask?: MoveTaskCallback
   ) {
     super(app);
     this.tasks = tasks;
     this.pendingRecurringTasks = pendingRecurringTasks;
     this.onGenerate = onGenerate;
+    this.onMoveTask = onMoveTask;
   }
 
   onOpen() {
@@ -68,10 +75,36 @@ export class ReminderModal extends Modal {
           overdueEl.setText('⚠️ 过期');
         }
 
+        // F6: 移动按钮（仅 daily 来源任务）
+        if (task.source === 'daily' && this.onMoveTask) {
+          const moveBtn = itemEl.createEl('button', {
+            cls: 'task-reminder-move-btn',
+            attr: { 'aria-label': '移动到其他日期' }
+          });
+          moveBtn.setText('📅');
+          moveBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止冒泡，避免触发跳转
+            this.onMoveTask!(task);
+          });
+        }
+
         // 点击跳转到文件
         itemEl.addEventListener('click', () => this.navigateToTask(task));
         itemEl.style.cursor = 'pointer';
         itemEl.setAttribute('title', task.fullText);
+
+        // F6: 桌面端右键菜单
+        if (Platform.isDesktop && task.source === 'daily' && this.onMoveTask) {
+          itemEl.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            this.showMoveMenu(task, e);
+          });
+        }
+
+        // F6: 移动端长按手势
+        if (Platform.isMobile && task.source === 'daily' && this.onMoveTask) {
+          this.setupLongPressGesture(itemEl, task);
+        }
       }
     }
 
@@ -195,5 +228,53 @@ export class ReminderModal extends Modal {
     }
 
     this.close();
+  }
+
+  /**
+   * F6: 显示移动菜单
+   */
+  private showMoveMenu(task: TaskItem, event: MouseEvent): void {
+    const menu = new Menu();
+    menu.addItem((item) => {
+      item.setTitle('移动到...')
+        .setIcon('calendar')
+        .onClick(() => this.onMoveTask?.(task));
+    });
+    menu.showAtMouseEvent(event);
+  }
+
+  /**
+   * F6: 设置移动端长按手势
+   */
+  private setupLongPressGesture(itemEl: HTMLElement, task: TaskItem): void {
+    let touchTimer: number | null = null;
+
+    itemEl.addEventListener('touchstart', (e) => {
+      touchTimer = window.setTimeout(() => {
+        // 触发移动菜单
+        const touch = e.touches[0];
+        const menu = new Menu();
+        menu.addItem((item) => {
+          item.setTitle('移动到...')
+            .setIcon('calendar')
+            .onClick(() => this.onMoveTask?.(task));
+        });
+        menu.showAtPosition({ x: touch.clientX, y: touch.clientY });
+      }, 500); // 500ms 长按延迟
+    }, { passive: true });
+
+    itemEl.addEventListener('touchend', () => {
+      if (touchTimer) {
+        window.clearTimeout(touchTimer);
+        touchTimer = null;
+      }
+    });
+
+    itemEl.addEventListener('touchmove', () => {
+      if (touchTimer) {
+        window.clearTimeout(touchTimer);
+        touchTimer = null;
+      }
+    });
   }
 }

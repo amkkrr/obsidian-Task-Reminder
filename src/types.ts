@@ -160,3 +160,75 @@ export interface DataviewTaskGroup {
   key: any;
   rows: DataviewTask[];
 }
+
+// ============================================
+// F5/F6 新增类型定义 (SPEC.md v1.3.0)
+// ============================================
+
+/** F5: 快速添加结果 */
+export interface QuickAddResult {
+  /** 任务内容 */
+  content: string;
+  /** 目标日期 */
+  targetDate: moment.Moment;
+}
+
+/** F6: 任务移动结果 */
+export interface TaskMoveResult {
+  /** 是否成功 */
+  success: boolean;
+  /** 原文件路径 */
+  fromPath: string;
+  /** 目标文件路径 */
+  toPath: string;
+  /** 任务文本 */
+  taskText: string;
+  /** 错误信息（如有） */
+  error?: string;
+}
+
+/** DatePickerModal 配置选项 */
+export interface DatePickerOptions {
+  /** 初始选中日期，默认今天 */
+  initialDate?: moment.Moment;
+  /** 是否允许选择过去日期，默认 false */
+  allowPastDates?: boolean;
+  /** 弹窗标题 */
+  title?: string;
+  /** 选择回调 */
+  onSelect: (date: moment.Moment) => void;
+  /** 取消回调 */
+  onCancel?: () => void;
+}
+
+/** 快捷日期选项 */
+export interface DateShortcut {
+  /** 显示标签 */
+  label: string;
+  /** 获取日期的函数 */
+  getDate: () => moment.Moment;
+}
+
+// moment 类型声明（Obsidian 内置）
+declare global {
+  namespace moment {
+    interface Moment {
+      format(format?: string): string;
+      add(amount: number, unit: string): Moment;
+      subtract(amount: number, unit: string): Moment;
+      startOf(unit: string): Moment;
+      endOf(unit: string): Moment;
+      isoWeekday(): number;
+      day(day: number): Moment;
+      date(date?: number): number | Moment;
+      month(): number;
+      year(): number;
+      isBefore(date: Moment, granularity?: string): boolean;
+      isAfter(date: Moment, granularity?: string): boolean;
+      isSame(date: Moment, granularity?: string): boolean;
+      isValid(): boolean;
+      clone(): Moment;
+    }
+  }
+  function moment(input?: string | number | Date | moment.Moment, format?: string, strict?: boolean): moment.Moment;
+}

@@ -1,6 +1,6 @@
 /**
  * Daily Note 写入服务
- * 用于 F4 周期任务生成功能
+ * 用于 F4 周期任务生成、F5 快速添加、F6 移动任务功能
  */
 
 import { App, TFile, TFolder, moment } from 'obsidian';
@@ -31,13 +31,21 @@ export class DailyNoteService {
    * 修复 P0-2：路径规范化处理
    */
   getDailyNotePath(): string {
+    return this.getDailyNotePathForDate(moment());
+  }
+
+  /**
+   * 获取指定日期的 Daily Note 路径（F5/F6 使用）
+   * @param date 目标日期
+   */
+  getDailyNotePathForDate(date: moment.Moment): string {
     let dailyPath = this.settings.dailyNotePath?.trim() || '';
     // 去掉尾随斜杠，避免 //
     dailyPath = dailyPath.replace(/\/+$/, '');
 
-    const year = moment().format('YYYY');
-    const month = moment().month() + 1;
-    const dateStr = moment().format('YYYY-MM-DD');
+    const year = date.format('YYYY');
+    const month = date.month() + 1;
+    const dateStr = date.format('YYYY-MM-DD');
 
     return `${dailyPath}/${year}/${this.monthNames[month]}/${dateStr}.md`;
   }
@@ -47,6 +55,78 @@ export class DailyNoteService {
    */
   isDailyNotePathConfigured(): boolean {
     return !!this.settings.dailyNotePath?.trim();
+  }
+
+  /**
+   * F5: 写入单个任务到指定日期的 Daily Note
+   * @param content 任务内容（不含 `- [ ]` 前缀）
+   * @param date 目标日期
+   */
+  async writeTask(content: string, date: moment.Moment): Promise<void> {
+    if (!this.isDailyNotePathConfigured()) {
+      throw new Error('请先在设置中配置 Daily Note 路径');
+    }
+
+    const taskLine = `- [ ] ${content}`;
+    await this.writeTaskLine(taskLine, date);
+  }
+
+  /**
+   * F6: 写入完整任务行到指定日期（用于移动任务）
+   * @param taskLine 完整任务行（如 `- [ ] 任务内容`）
+   * @param date 目标日期
+   */
+  async writeTaskLine(taskLine: string, date: moment.Moment): Promise<void> {
+    if (!this.isDailyNotePathConfigured()) {
+      throw new Error('请先在设置中配置 Daily Note 路径');
+    }
+
+    const dailyPath = this.getDailyNotePathForDate(date);
+    let file = this.app.vault.getAbstractFileByPath(dailyPath);
+
+    // 如果文件不存在，创建它
+    if (!file) {
+      file = await this.createDailyNoteForDate(dailyPath, date);
+    }
+
+    if (!(file instanceof TFile)) {
+      throw new Error(`无法访问日记文件: ${dailyPath}`);
+    }
+
+    // 读取现有内容
+    let fileContent = await this.app.vault.read(file);
+
+    // 追加到文件末尾
+    if (fileContent.length > 0 && !fileContent.endsWith('\n')) {
+      fileContent += '\n';
+    }
+    fileContent += taskLine + '\n';
+
+    await this.app.vault.modify(file, fileContent);
+  }
+
+  /**
+   * 创建指定日期的 Daily Note（F5/F6 使用）
+   */
+  private async createDailyNoteForDate(path: string, date: moment.Moment): Promise<TFile> {
+    // 确保目录存在
+    const folderPath = path.substring(0, path.lastIndexOf('/'));
+    await this.ensureFolderExists(folderPath);
+
+    // 创建基础内容
+    const dateStr = date.format('YYYY-MM-DD');
+    const dayOfWeek = date.format('dddd');
+    const content = `---
+date: ${dateStr}
+day: ${dayOfWeek}
+---
+
+# ${dateStr}
+
+`;
+
+    // 创建文件
+    return await this.app.vault.create(path, content);
   }
 
   /**
