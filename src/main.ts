@@ -63,6 +63,13 @@ export default class TaskReminderPlugin extends Plugin {
       this.openQuickAdd();
     });
 
+    // F6: 注册移动当前任务命令
+    this.addCommand({
+      id: 'move-current-task',
+      name: 'Move current line task to another date',
+      editorCallback: (editor) => this.moveCurrentLineTask(editor)
+    });
+
     // 状态栏（仅桌面端）
     if (this.settings.showStatusBar && Platform.isDesktop) {
       this.setupStatusBar();
@@ -244,6 +251,62 @@ export default class TaskReminderPlugin extends Plugin {
       return;
     }
 
+    this.openMoveTaskDatePicker(task);
+  }
+
+  /**
+   * F6: 移动当前行任务（Command Palette 命令）
+   */
+  private moveCurrentLineTask(editor: any): void {
+    // 检查 Daily Note 路径是否配置
+    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+      new Notice('请先在设置中配置 Daily Note 路径');
+      return;
+    }
+
+    // 获取当前文件路径
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('❌ 没有打开的文件');
+      return;
+    }
+
+    // 检查是否在 Daily Note 目录中
+    const dailyPath = this.settings.dailyNotePath?.trim() || '';
+    if (!activeFile.path.startsWith(dailyPath)) {
+      new Notice('❌ 仅支持移动 Daily Note 中的任务');
+      return;
+    }
+
+    // 获取当前行
+    const cursor = editor.getCursor();
+    const lineNumber = cursor.line;
+    const lineText = editor.getLine(lineNumber);
+
+    // 检查是否是任务行
+    if (!lineText.match(/^\s*- \[ \]/)) {
+      new Notice('❌ 当前行不是未完成的任务');
+      return;
+    }
+
+    // 构造 TaskItem
+    const task: TaskItem = {
+      text: lineText.replace(/^\s*- \[ \]\s*/, ''),
+      fullText: lineText,
+      filePath: activeFile.path,
+      line: lineNumber,
+      source: 'daily',
+      sourceLabel: 'Daily Note',
+      isMeeting: false
+    };
+
+    this.openMoveTaskDatePicker(task);
+  }
+
+  /**
+   * F6: 打开移动任务日期选择器
+   */
+  private openMoveTaskDatePicker(task: TaskItem): void {
     new DatePickerModal(this.app, {
       title: '移动任务到',
       allowPastDates: this.settings.allowMoveToPast,
