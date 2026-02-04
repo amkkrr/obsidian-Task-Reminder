@@ -1,6 +1,6 @@
 {
   "name": "obsidian-task-reminder",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "description": "Displays a daily task reminder popup when Obsidian starts, showing pending tasks from Daily Notes and custom sources.",
   "main": "main.js",
   "scripts": {

@@ -43,6 +43,8 @@ export interface TaskReminderSettings {
   confirmBeforeMove: boolean;
   /** F6: 是否允许移动任务到过去日期 */
   allowMoveToPast: boolean;
+  /** F7: Daily Note 模板文件路径 */
+  dailyNoteTemplatePath: string;
 }
 
 /** 默认设置 */
@@ -63,7 +65,8 @@ export const DEFAULT_SETTINGS: TaskReminderSettings = {
   recurringConfigPath: '',
   lastReminderDate: '',
   confirmBeforeMove: true,
-  allowMoveToPast: false
+  allowMoveToPast: false,
+  dailyNoteTemplatePath: ''
 };
 
 /**
@@ -255,6 +258,22 @@ export class TaskReminderSettingTab extends PluginSettingTab {
           });
         // 添加文件夹自动补全
         new FolderSuggest(this.app, text.inputEl);
+      });
+
+    // F7: Daily Note 模板路径（带文件自动补全）
+    new Setting(containerEl)
+      .setName('Daily Note 模板')
+      .setDesc('创建新日记时使用的模板文件（留空使用默认模板）')
+      .addText(text => {
+        text
+          .setPlaceholder('如 Templates/Daily Note.md')
+          .setValue(this.plugin.settings.dailyNoteTemplatePath)
+          .onChange(async (value) => {
+            this.plugin.settings.dailyNoteTemplatePath = value;
+            await this.plugin.saveSettings();
+          });
+        // 添加文件自动补全（限 .md 文件）
+        new FileSuggest(this.app, text.inputEl, 'md');
       });
 
     new Setting(containerEl)

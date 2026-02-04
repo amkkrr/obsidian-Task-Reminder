@@ -164,7 +164,7 @@
 - **概要**: 创建 Daily Note 时使用用户指定的模板文件
 - **触发场景**: F4/F5/F6 需要创建新 Daily Note 时
 - **配置项**: `dailyNoteTemplatePath` - 模板文件路径
-- **模板变量**: `{{date}}`, `{{day}}`, `{{day:zh}}`, `{{time}}`, `{{title}}`
+- **模板变量**: `{{date}}`, `{{date:format}}`, `{{day}}`, `{{day:zh}}`, `{{time}}`, `{{title}}`
 - **向后兼容**: 未配置时使用默认模板，模板不存在时降级
 
 #### 共享组件: DatePickerModal

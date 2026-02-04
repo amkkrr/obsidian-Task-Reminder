@@ -3,7 +3,7 @@
  * 用于 F4 周期任务生成、F5 快速添加、F6 移动任务功能
  */
 
-import { App, TFile, TFolder, moment } from 'obsidian';
+import { App, TFile, TFolder, moment, Notice } from 'obsidian';
 import { TaskReminderSettings } from '../settings';
 import { PendingRecurringTask } from '../types';
 
@@ -107,26 +107,10 @@ export class DailyNoteService {
 
   /**
    * 创建指定日期的 Daily Note（F5/F6 使用）
+   * P0-1: 统一调用 createDailyNoteWithTemplate
    */
   private async createDailyNoteForDate(path: string, date: moment.Moment): Promise<TFile> {
-    // 确保目录存在
-    const folderPath = path.substring(0, path.lastIndexOf('/'));
-    await this.ensureFolderExists(folderPath);
-
-    // 创建基础内容
-    const dateStr = date.format('YYYY-MM-DD');
-    const dayOfWeek = date.format('dddd');
-    const content = `---
-date: ${dateStr}
-day: ${dayOfWeek}
----
-
-# ${dateStr}
-
-`;
-
-    // 创建文件
-    return await this.app.vault.create(path, content);
+    return await this.createDailyNoteWithTemplate(path, date);
   }
 
   /**
@@ -211,17 +195,87 @@ day: ${dayOfWeek}
   }
 
   /**
-   * 创建 Daily Note 文件（含基础 frontmatter）
+   * 创建 Daily Note 文件（F4 使用）
+   * P0-1: 统一调用 createDailyNoteWithTemplate
    */
   private async createDailyNote(path: string): Promise<TFile> {
-    // 确保目录存在
+    return await this.createDailyNoteWithTemplate(path, moment());
+  }
+
+  /**
+   * F7: 使用模板创建 Daily Note
+   * 统一创建入口，F4/F5/F6 均调用此方法
+   */
+  private async createDailyNoteWithTemplate(
+    path: string,
+    date: moment.Moment
+  ): Promise<TFile> {
+    // 1. 确保目录存在
     const folderPath = path.substring(0, path.lastIndexOf('/'));
     await this.ensureFolderExists(folderPath);
 
-    // 创建基础内容
-    const dateStr = moment().format('YYYY-MM-DD');
-    const dayOfWeek = moment().format('dddd');
-    const content = `---
+    // 2. 获取模板内容
+    let content: string;
+    const templatePath = this.settings.dailyNoteTemplatePath?.trim();
+
+    if (templatePath) {
+      const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+      if (templateFile instanceof TFile) {
+        // P0-4: 模板读取失败降级处理
+        try {
+          const templateContent = await this.app.vault.read(templateFile);
+          content = this.processTemplate(templateContent, date);
+        } catch (error) {
+          console.error(`[TaskReminder] 模板读取失败: ${error}`);
+          new Notice(`模板读取失败，使用默认模板: ${error}`, 5000);
+          content = this.getDefaultTemplate(date);
+        }
+      } else {
+        // 模板文件不存在，使用默认模板并警告
+        console.warn(`[TaskReminder] 模板文件不存在: ${templatePath}`);
+        new Notice(`模板文件不存在，使用默认模板: ${templatePath}`, 5000);
+        content = this.getDefaultTemplate(date);
+      }
+    } else {
+      // 未配置模板，使用默认
+      content = this.getDefaultTemplate(date);
+    }
+
+    return await this.app.vault.create(path, content);
+  }
+
+  /**
+   * F7: 处理模板变量
+   */
+  private processTemplate(template: string, date: moment.Moment): string {
+    // P1-2: 固定英文星期映射表（不受 locale 影响）
+    const dayEnMap: Record<number, string> = {
+      0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
+      4: 'Thursday', 5: 'Friday', 6: 'Saturday'
+    };
+    const dayZhMap: Record<number, string> = {
+      0: '星期日', 1: '星期一', 2: '星期二', 3: '星期三',
+      4: '星期四', 5: '星期五', 6: '星期六'
+    };
+
+    return template
+      // 自定义日期格式 {{date:FORMAT}}
+      .replace(/\{\{date:([^}]+)\}\}/g, (_, format) => date.format(format))
+      // 基础变量
+      .replace(/\{\{date\}\}/g, date.format('YYYY-MM-DD'))
+      .replace(/\{\{day\}\}/g, dayEnMap[date.day()])  // 使用映射表确保英文
+      .replace(/\{\{day:zh\}\}/g, dayZhMap[date.day()])
+      .replace(/\{\{time\}\}/g, moment().format('HH:mm'))  // P1-3: 创建时刻
+      .replace(/\{\{title\}\}/g, date.format('YYYY-MM-DD'));
+  }
+
+  /**
+   * F7: 默认模板（向后兼容）
+   */
+  private getDefaultTemplate(date: moment.Moment): string {
+    const dateStr = date.format('YYYY-MM-DD');
+    const dayOfWeek = date.format('dddd');
+    return `---
 date: ${dateStr}
 day: ${dayOfWeek}
 ---
@@ -229,9 +283,6 @@ day: ${dayOfWeek}
 # ${dateStr}
 
 `;
-
-    // 创建文件
-    return await this.app.vault.create(path, content);
   }
 
   /**
