@@ -258,12 +258,6 @@ export default class TaskReminderPlugin extends Plugin {
    * F6: 移动当前行任务（Command Palette 命令）
    */
   private moveCurrentLineTask(editor: any): void {
-    // 检查 Daily Note 路径是否配置
-    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
-      new Notice('请先在设置中配置 Daily Note 路径');
-      return;
-    }
-
     // 获取当前文件路径
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
@@ -271,26 +265,54 @@ export default class TaskReminderPlugin extends Plugin {
       return;
     }
 
-    // 检查是否在 Daily Note 目录中
-    const dailyPath = this.settings.dailyNotePath?.trim() || '';
-    if (!activeFile.path.startsWith(dailyPath)) {
-      new Notice('❌ 仅支持移动 Daily Note 中的任务');
-      return;
-    }
-
-    // 获取当前行
+    // 获取当前行和选中的文本
     const cursor = editor.getCursor();
     const lineNumber = cursor.line;
     const lineText = editor.getLine(lineNumber);
+    const selectedText = editor.getSelection();
 
-    // 检查是否是任务行
-    if (!lineText.match(/^\s*- \[ \]/)) {
-      new Notice('❌ 当前行不是未完成的任务');
+    // 如果有选中文本，优先使用选中文本进行快速添加
+    if (selectedText.trim()) {
+      // 检查Daily Note路径是否配置
+      if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+        new Notice('请先在设置中配置 Daily Note 路径');
+        return;
+      }
+      // 打开快速添加弹窗，预填选中的文本
+      new QuickAddModal(
+        this.app, 
+        this.dailyNoteService, 
+        this.settings.allowMoveToPast,
+        selectedText.trim()
+      ).open();
       return;
     }
 
+    // 检查Daily Note路径是否配置（移动操作需要）
+    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+      new Notice('请先在设置中配置 Daily Note 路径');
+      return;
+    }
+
+    // 检查是否在 Daily Note 目录中（只有执行移动操作时才需要检查）
+    const dailyPath = this.settings.dailyNotePath?.trim() || '';
+    if (!activeFile.path.startsWith(dailyPath)) {
+      // 不在Daily Note目录中，执行快速添加而非报错
+      new QuickAddModal(this.app, this.dailyNoteService, this.settings.allowMoveToPast).open();
+      return;
+    }
+
+    // 检查是否是任务行
+    if (!lineText.match(/^\s*- \[ \]/)) {
+      // 当前行不是有效任务，执行快速添加
+      new QuickAddModal(this.app, this.dailyNoteService, this.settings.allowMoveToPast).open();
+      return;
+    }
+
+    // 当前行是有效任务，执行移动逻辑
     // 构造 TaskItem
     const task: TaskItem = {
+      id: `${activeFile.path}:${lineNumber}`,
       text: lineText.replace(/^\s*- \[ \]\s*/, ''),
       fullText: lineText,
       filePath: activeFile.path,

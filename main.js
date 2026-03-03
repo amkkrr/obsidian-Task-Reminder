@@ -1446,9 +1446,9 @@ var DatePickerModal = class extends import_obsidian9.Modal {
       grid.createDiv({ cls: "calendar-day empty" });
     }
     const today = moment().format("YYYY-MM-DD");
-    const daysInMonth = endOfMonth.date();
+    const daysInMonth = endOfMonth.daysInMonth();
     for (let d = 1; d <= daysInMonth; d++) {
-      const date = this.currentMonth.clone().date(d);
+      const date = this.currentMonth.clone().set("date", d);
       const dateStr = date.format("YYYY-MM-DD");
       const dayEl = grid.createDiv({
         cls: "calendar-day",
@@ -1536,10 +1536,11 @@ var DatePickerModal = class extends import_obsidian9.Modal {
 
 // src/ui/QuickAddModal.ts
 var QuickAddModal = class extends import_obsidian10.Modal {
-  constructor(app, dailyNoteService, allowPastDates = false) {
+  constructor(app, dailyNoteService, allowPastDates = false, initialContent = "") {
     super(app);
     this.dailyNoteService = dailyNoteService;
     this.allowPastDates = allowPastDates;
+    this.initialContent = initialContent;
   }
   onOpen() {
     const { contentEl, titleEl } = this;
@@ -1551,7 +1552,15 @@ var QuickAddModal = class extends import_obsidian10.Modal {
       placeholder: "\u8F93\u5165\u4EFB\u52A1\u5185\u5BB9...",
       cls: "quick-add-input"
     });
-    this.inputEl.focus();
+    if (this.initialContent) {
+      this.inputEl.value = this.initialContent;
+      setTimeout(() => {
+        this.inputEl.focus();
+        this.inputEl.setSelectionRange(this.initialContent.length, this.initialContent.length);
+      }, 10);
+    } else {
+      this.inputEl.focus();
+    }
     this.inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         if (e.ctrlKey || e.metaKey) {
@@ -1850,28 +1859,43 @@ var TaskReminderPlugin = class extends import_obsidian11.Plugin {
    */
   moveCurrentLineTask(editor) {
     var _a;
-    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
-      new import_obsidian11.Notice("\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u914D\u7F6E Daily Note \u8DEF\u5F84");
-      return;
-    }
     const activeFile = this.app.workspace.getActiveFile();
     if (!activeFile) {
       new import_obsidian11.Notice("\u274C \u6CA1\u6709\u6253\u5F00\u7684\u6587\u4EF6");
       return;
     }
-    const dailyPath = ((_a = this.settings.dailyNotePath) == null ? void 0 : _a.trim()) || "";
-    if (!activeFile.path.startsWith(dailyPath)) {
-      new import_obsidian11.Notice("\u274C \u4EC5\u652F\u6301\u79FB\u52A8 Daily Note \u4E2D\u7684\u4EFB\u52A1");
-      return;
-    }
     const cursor = editor.getCursor();
     const lineNumber = cursor.line;
     const lineText = editor.getLine(lineNumber);
+    const selectedText = editor.getSelection();
+    if (selectedText.trim()) {
+      if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+        new import_obsidian11.Notice("\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u914D\u7F6E Daily Note \u8DEF\u5F84");
+        return;
+      }
+      new QuickAddModal(
+        this.app,
+        this.dailyNoteService,
+        this.settings.allowMoveToPast,
+        selectedText.trim()
+      ).open();
+      return;
+    }
+    if (!this.dailyNoteService.isDailyNotePathConfigured()) {
+      new import_obsidian11.Notice("\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u914D\u7F6E Daily Note \u8DEF\u5F84");
+      return;
+    }
+    const dailyPath = ((_a = this.settings.dailyNotePath) == null ? void 0 : _a.trim()) || "";
+    if (!activeFile.path.startsWith(dailyPath)) {
+      new QuickAddModal(this.app, this.dailyNoteService, this.settings.allowMoveToPast).open();
+      return;
+    }
     if (!lineText.match(/^\s*- \[ \]/)) {
-      new import_obsidian11.Notice("\u274C \u5F53\u524D\u884C\u4E0D\u662F\u672A\u5B8C\u6210\u7684\u4EFB\u52A1");
+      new QuickAddModal(this.app, this.dailyNoteService, this.settings.allowMoveToPast).open();
       return;
     }
     const task = {
+      id: `${activeFile.path}:${lineNumber}`,
       text: lineText.replace(/^\s*- \[ \]\s*/, ""),
       fullText: lineText,
       filePath: activeFile.path,

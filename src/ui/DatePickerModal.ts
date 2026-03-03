@@ -139,10 +139,10 @@ export class DatePickerModal extends Modal {
 
     // 渲染日期
     const today = moment().format('YYYY-MM-DD');
-    const daysInMonth = endOfMonth.date() as number;
+    const daysInMonth = endOfMonth.daysInMonth();
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const date = this.currentMonth.clone().date(d);
+      const date: moment.Moment = this.currentMonth.clone().set('date', d);
       const dateStr = date.format('YYYY-MM-DD');
       const dayEl = grid.createDiv({
         cls: 'calendar-day',

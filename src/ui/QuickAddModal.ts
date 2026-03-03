@@ -11,11 +11,13 @@ export class QuickAddModal extends Modal {
   private dailyNoteService: DailyNoteService;
   private inputEl: HTMLInputElement;
   private allowPastDates: boolean;
+  private initialContent: string;
 
-  constructor(app: App, dailyNoteService: DailyNoteService, allowPastDates: boolean = false) {
+  constructor(app: App, dailyNoteService: DailyNoteService, allowPastDates: boolean = false, initialContent: string = '') {
     super(app);
     this.dailyNoteService = dailyNoteService;
     this.allowPastDates = allowPastDates;
+    this.initialContent = initialContent;
   }
 
   onOpen(): void {
@@ -34,8 +36,18 @@ export class QuickAddModal extends Modal {
       cls: 'quick-add-input'
     });
 
-    // 自动聚焦
-    this.inputEl.focus();
+    // 如果有初始内容，设置到输入框
+    if (this.initialContent) {
+      this.inputEl.value = this.initialContent;
+      // 将光标放到内容末尾
+      setTimeout(() => {
+        this.inputEl.focus();
+        this.inputEl.setSelectionRange(this.initialContent.length, this.initialContent.length);
+      }, 10);
+    } else {
+      // 自动聚焦
+      this.inputEl.focus();
+    }
 
     // 快捷键支持
     this.inputEl.addEventListener('keydown', (e) => {
